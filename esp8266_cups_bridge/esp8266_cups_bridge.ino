@@ -2,13 +2,16 @@
  * ============================================================================
  * ESP8266 CUPS & Network Print Bridge (ESP-01 8-Pin Firmware)
  * ============================================================================
+ * Standalone direct Wi-Fi print server (NO ROUTER REQUIRED).
+ *
+ * Broadcasts an independent Wi-Fi network named with the ESP's unique hardware
+ * Chip UID (e.g. "Amstrad-DMP3000-A1B2C3") allowing direct connection from
+ * Mac, Linux, or Android devices without needing any home router.
+ *
  * Bridges standard CUPS network printing protocols (RAW AppSocket/JetDirect
  * on port 9100, LPD on port 515, mDNS/Bonjour discovery, and an embedded
  * Web Management & Print Portal on port 80) to an Arduino Uno/Nano parallel
  * printer driver over hardware Serial (115200 baud) with XON/XOFF flow control.
- *
- * Supports automatic Wi-Fi connection with non-volatile EEPROM storage and
- * hardware router UID (BSSID) network scanning & locking.
  * ============================================================================
  */
 
@@ -24,12 +27,11 @@ void setup() {
     Serial.begin(SERIAL_BAUD_RATE);
     delay(100);
 
-    // 2. Initialize EEPROM and connect to Wi-Fi (loads saved credentials or AP fallback)
+    // 2. Start Standalone Direct Wi-Fi Access Point (SSID contains unique Chip UID)
     wifi_manager_init();
-    wifi_manager_connect();
 
-    // 3. Initialize mDNS / Bonjour Advertising for automatic CUPS & macOS discovery
-    if (MDNS.begin(MDNS_HOSTNAME)) {
+    // 3. Initialize mDNS / Bonjour Advertising on 192.168.4.1 for automatic CUPS & macOS discovery
+    if (MDNS.begin(MDNS_HOSTNAME, wifi_manager_get_ip_addr())) {
         // Port 9100 RAW JetDirect / AppSocket (primary CUPS / macOS backend)
         MDNS.addService("pdl-datastream", "tcp", RAW_JETDIRECT_PORT);
         MDNS.addServiceTxt("pdl-datastream", "tcp", "ty", PRINTER_MODEL_NAME);
@@ -52,6 +54,9 @@ void setup() {
 }
 
 void loop() {
+    // Service Captive DNS
+    wifi_manager_loop();
+
     // Service mDNS
     MDNS.update();
 

@@ -1,125 +1,54 @@
 #include "wifi_manager.h"
-#include <EEPROM.h>
 
-static bool is_connected = false;
-
-String format_bssid(const uint8_t *b) {
-    char buf[20];
-    snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X",
-             b[0], b[1], b[2], b[3], b[4], b[5]);
-    return String(buf);
-}
-
-static bool parse_bssid(const String &str, uint8_t b[6]) {
-    if (str.length() < 17) return false;
-    unsigned int v[6];
-    if (sscanf(str.c_str(), "%x:%x:%x:%x:%x:%x",
-               &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]) == 6) {
-        for (int i = 0; i < 6; i++) b[i] = (uint8_t)v[i];
-        return true;
-    }
-    return false;
-}
+static DNSServer dnsServer;
+static String full_ssid = "";
+static String chip_uid  = "";
+static IPAddress apIP(AP_STATIC_IP);
+static IPAddress netMsk(AP_SUBNET_MASK);
 
 void wifi_manager_init() {
-    EEPROM.begin(EEPROM_CONFIG_SIZE);
+    // 1. Generate unique 6-character uppercase hardware UID from chip ID
+    uint32_t id = ESP.getChipId();
+    char buf[12];
+    snprintf(buf, sizeof(buf), "%06X", (unsigned int)(id & 0xFFFFFF));
+    chip_uid = String(buf);
+
+    // 2. Build network SSID including the unique hardware UID
+    full_ssid = String(AP_SSID_PREFIX) + chip_uid;
+
+    // 3. Set Wi-Fi to Access Point mode only (direct device-to-printer link)
+    WiFi.mode(WIFI_AP);
+    WiFi.softAPConfig(apIP, apIP, netMsk);
+
+    // If AP_PASSWORD is empty, launch an Open network for instant connection
+    const char *pass = (strlen(AP_PASSWORD) >= 8) ? AP_PASSWORD : NULL;
+    WiFi.softAP(full_ssid.c_str(), pass);
+
+    // 4. Start Captive DNS server on port 53 (redirects all domains to 192.168.4.1)
+    dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
+    dnsServer.start(DNS_PORT, "*", apIP);
 }
 
-bool wifi_manager_load(SavedWiFiConfig &cfg) {
-    EEPROM.get(0, cfg);
-    return (cfg.magic == EEPROM_MAGIC && cfg.ssid[0] != '\0');
+void wifi_manager_loop() {
+    dnsServer.processNextRequest();
 }
 
-bool wifi_manager_save(const String &ssid, const String &pass, const String &bssid_str, bool lock_bssid) {
-    SavedWiFiConfig cfg;
-    cfg.magic = EEPROM_MAGIC;
-    memset(cfg.ssid, 0, sizeof(cfg.ssid));
-    memset(cfg.password, 0, sizeof(cfg.password));
-    memset(cfg.bssid, 0, sizeof(cfg.bssid));
-
-    strncpy(cfg.ssid, ssid.c_str(), sizeof(cfg.ssid) - 1);
-    strncpy(cfg.password, pass.c_str(), sizeof(cfg.password) - 1);
-    cfg.lock_bssid = lock_bssid && parse_bssid(bssid_str, cfg.bssid);
-
-    EEPROM.put(0, cfg);
-    return EEPROM.commit();
+String wifi_manager_get_ssid() {
+    return full_ssid;
 }
 
-bool wifi_manager_connect() {
-    SavedWiFiConfig cfg;
-    bool has_saved = wifi_manager_load(cfg);
-
-    WiFi.mode(WIFI_STA);
-    is_connected = false;
-
-    // 1. Try saved credentials from EEPROM
-    if (has_saved) {
-        if (cfg.lock_bssid) {
-            WiFi.begin(cfg.ssid, cfg.password, 0, cfg.bssid);
-        } else {
-            WiFi.begin(cfg.ssid, cfg.password);
-        }
-
-        unsigned long startAttempt = millis();
-        while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 12000) {
-            delay(250);
-        }
-        if (WiFi.status() == WL_CONNECTED) {
-            is_connected = true;
-            return true;
-        }
-    }
-
-    // 2. Try default hardcoded credentials if present
-    if (String(DEFAULT_WIFI_SSID).length() > 0) {
-        WiFi.begin(DEFAULT_WIFI_SSID, DEFAULT_WIFI_PASSWORD);
-        unsigned long startAttempt = millis();
-        while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 10000) {
-            delay(250);
-        }
-        if (WiFi.status() == WL_CONNECTED) {
-            is_connected = true;
-            return true;
-        }
-    }
-
-    // 3. Fallback to Access Point mode for on-the-fly network discovery & setup
-    WiFi.mode(WIFI_AP_STA);
-    WiFi.softAP(AP_FALLBACK_SSID, AP_FALLBACK_PASS);
-    return false;
+String wifi_manager_get_uid() {
+    return chip_uid;
 }
 
-String wifi_manager_scan_json() {
-    int n = WiFi.scanNetworks(false, true); // Active async-free scan including hidden
-    String json = "[";
-    for (int i = 0; i < n; i++) {
-        if (i > 0) json += ",";
-        json += "{";
-        json += "\"ssid\":\"" + WiFi.SSID(i) + "\",";
-        json += "\"bssid\":\"" + WiFi.BSSIDstr(i) + "\",";
-        json += "\"rssi\":" + String(WiFi.RSSI(i)) + ",";
-        json += "\"channel\":" + String(WiFi.channel(i)) + ",";
-        json += "\"secure\":" + String(WiFi.encryptionType(i) != ENC_TYPE_NONE ? "true" : "false");
-        json += "}";
-    }
-    json += "]";
-    return json;
+String wifi_manager_get_ip() {
+    return apIP.toString();
 }
 
-bool wifi_manager_is_connected() {
-    return (WiFi.status() == WL_CONNECTED);
+IPAddress wifi_manager_get_ip_addr() {
+    return apIP;
 }
 
-String wifi_manager_get_active_ssid() {
-    if (WiFi.status() == WL_CONNECTED) {
-        return WiFi.SSID();
-    }
-    return String(AP_FALLBACK_SSID) + " (Setup AP)";
-}
-
-String wifi_manager_get_active_bssid() {
-    if (WiFi.status() == WL_CONNECTED) {
-        return WiFi.BSSIDstr();
-    }
-    return WiFi.softAPmacAddress();
+uint8_t wifi_manager_get_station_count() {
+    return WiFi.softAPgetStationNum();
 }

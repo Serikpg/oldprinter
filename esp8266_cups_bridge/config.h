@@ -4,33 +4,21 @@
 #include <Arduino.h>
 
 // ============================================================================
-// Wi-Fi Configuration
+// Direct Standalone Access Point Mode (NO ROUTER REQUIRED!)
 // ============================================================================
-// Optional fallback hardcoded credentials (if EEPROM is empty)
-#define DEFAULT_WIFI_SSID     ""
-#define DEFAULT_WIFI_PASSWORD ""
+// The ESP broadcasts its own independent Wi-Fi network directly.
+// Your Mac, Linux PC, or Android phone connects directly to this Wi-Fi.
+#define AP_SSID_PREFIX        "Amstrad-DMP3000-"  // Appends unique hardware Chip UID
+#define AP_PASSWORD           ""                  // Empty string = Open Wi-Fi (no password needed)
+                                                  // Or set to "12345678" if you want a password
 
-// Access Point fallback if no network is saved or connection fails
-#define AP_FALLBACK_SSID      "OldPrinter-Setup"
-#define AP_FALLBACK_PASS      "12345678"
+// Direct Network Addressing
+#define AP_STATIC_IP          192, 168, 4, 1      // Direct printer IP
+#define AP_SUBNET_MASK        255, 255, 255, 0
 
-// Hostname for mDNS (accessible as http://oldprinter.local)
+// Hostname for mDNS (accessible as http://oldprinter.local or 192.168.4.1)
 #define MDNS_HOSTNAME         "oldprinter"
 #define PRINTER_MODEL_NAME    "Amstrad DMP3000 (IBM Mode)"
-
-// ============================================================================
-// EEPROM Persistent Wi-Fi Storage
-// ============================================================================
-#define EEPROM_CONFIG_SIZE    256
-#define EEPROM_MAGIC          0x50524E31  // "PRN1"
-
-struct SavedWiFiConfig {
-    uint32_t magic;
-    char     ssid[33];
-    char     password[65];
-    uint8_t  bssid[6];      // Hardware MAC / UID of target router/AP
-    bool     lock_bssid;    // If true, connects strictly to this specific AP UID
-};
 
 // ============================================================================
 // Network Ports
@@ -38,6 +26,7 @@ struct SavedWiFiConfig {
 #define RAW_JETDIRECT_PORT    9100  // Standard CUPS / macOS / AppSocket RAW port
 #define LPD_PORT              515   // Line Printer Daemon port
 #define HTTP_PORT             80    // Web UI & REST API port
+#define DNS_PORT              53    // Captive DNS server port
 
 // ============================================================================
 // Serial Interface (ESP8266 <-> Arduino Uno / Nano)

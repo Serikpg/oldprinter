@@ -210,34 +210,34 @@ To configure the printer for standard IBM Mode (Table 3.2 — IBM Character Set 
 
 ---
 
-## 5. Network Printing Configuration (CUPS, macOS & Android)
+## 5. Direct Standalone Network Printing (Zero Router Required!)
 
-The ESP8266 exposes three network services:
-1. **Port 9100 (RAW AppSocket / HP JetDirect):** The universal raw text stream protocol used by CUPS, macOS, Windows, and raw print services.
-2. **Port 515 (LPD / LPR):** Line Printer Daemon (RFC 1179).
-3. **Port 80 (HTTP Web Portal):** Browser dashboard with direct text printing for mobile devices.
+The ESP8266 generates its own independent Wi-Fi network directly:
+- **SSID:** `Amstrad-DMP3000-<UID>` (where `<UID>` is the unique 6-character hardware Chip ID of the ESP8266, e.g. `Amstrad-DMP3000-8C4E2A`).
+- **Security:** Open by default (no password required for instant connection; configurable in `config.h`).
+- **Printer Direct IP:** `192.168.4.1` (built-in DHCP automatically assigns an IP to your connected device).
+
+The ESP8266 exposes three direct network services on `192.168.4.1`:
+1. **Port 9100 (RAW AppSocket / HP JetDirect):** The universal raw text stream protocol used by CUPS, macOS, and Android raw print services (`socket://192.168.4.1:9100`).
+2. **Port 515 (LPD / LPR):** Line Printer Daemon (`lpd://192.168.4.1/raw`).
+3. **Port 80 (HTTP Web Portal):** Browser dashboard with direct text printing (`http://192.168.4.1/`).
+4. **Port 53 (Captive DNS):** Automatically resolves any URL entered on a connected phone or laptop directly to `192.168.4.1`.
+
+---
 
 ### A. CUPS on Linux
 
-#### Method 1: Using the Command Line (`lpadmin`)
-
-Open a terminal on your Linux system:
+1. Connect your computer's Wi-Fi directly to `Amstrad-DMP3000-<UID>`.
+2. Add the printer using the command line (`lpadmin`):
 
 ```bash
 # Add printer using RAW AppSocket backend with Generic Text-Only driver
 sudo lpadmin -p Amstrad_DMP3000 \
-             -v socket://oldprinter.local:9100 \
+             -v socket://192.168.4.1:9100 \
              -E \
              -m raw \
              -D "Amstrad DMP3000 Dot Matrix" \
              -L "Workbench"
-
-# Alternatively, using the CUPS textonly driver with PPD:
-sudo lpadmin -p Amstrad_DMP3000 \
-             -v socket://oldprinter.local:9100 \
-             -E \
-             -m textonly.ppd \
-             -D "Amstrad DMP3000 Dot Matrix"
 
 # Set as default printer (optional)
 sudo lpoptions -d Amstrad_DMP3000

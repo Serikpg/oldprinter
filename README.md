@@ -116,39 +116,41 @@ arduino-cli compile --fqbn arduino:avr:uno arduino_printer_driver
 # 2. Upload to Arduino
 arduino-cli upload -p /dev/ttyUSB0 --fqbn arduino:avr:uno arduino_printer_driver
 
-# 3. Compile and upload ESP8266 firmware (no need to hardcode passwords!):
+# 3. Compile and upload ESP8266 firmware:
 arduino-cli compile --fqbn esp8266:esp8266:generic esp8266_cups_bridge
 arduino-cli upload -p /dev/ttyUSB1 --fqbn esp8266:esp8266:generic esp8266_cups_bridge
-
-# 4. First-time Wi-Fi setup (or when changing networks):
-#    - The ESP automatically creates a hotspot: "OldPrinter-Setup" (password: 12345678)
-#    - Connect with your phone or laptop and open http://192.168.4.1/wifi
-#    - Click "Scan Available Networks" to see all Wi-Fi APs with their hardware UIDs (BSSID)
-#    - Select your network, enter the password, and click "Save & Connect"
-#    - Credentials are saved in EEPROM flash; the ESP connects automatically forever after!
 ```
 
 ---
 
-## 📱 How to Print
+## 📱 Direct Wi-Fi Printing (Zero Router Required!)
+
+The ESP8266 generates its own standalone Wi-Fi Access Point containing its unique hardware Chip UID:
+* **Network SSID:** `Amstrad-DMP3000-<UID>` (e.g. `Amstrad-DMP3000-8C4E2A`)
+* **Password:** *(None / Open by default — connect instantly!)*
+* **Printer Direct IP:** `192.168.4.1`
 
 ### 1. From macOS
-1. Open **System Settings > Printers & Scanners > Add Printer (+)**.
-2. Click the **IP** tab.
-3. Address: `oldprinter.local` (or `<ESP_IP>`).
-4. Protocol: **HP Jetdirect - Socket** (port 9100).
-5. Use: **Generic Text-Only Printer** or **IBM Proprinter**.
-6. Print any file via `lp -d Amstrad_DMP3000 file.txt`.
+1. Connect your Mac's Wi-Fi directly to `Amstrad-DMP3000-<UID>`.
+2. Open **System Settings > Printers & Scanners > Add Printer (+)**.
+3. Click the **IP** tab.
+4. Address: `192.168.4.1` (or `oldprinter.local`).
+5. Protocol: **HP Jetdirect - Socket** (port 9100).
+6. Use: **Generic Text-Only Printer** or **IBM Proprinter**.
+7. Print any file: `lp -d Amstrad_DMP3000 file.txt`.
 
 ### 2. From Linux (CUPS)
+1. Connect Wi-Fi to `Amstrad-DMP3000-<UID>`.
+2. Add printer to CUPS:
 ```bash
-sudo lpadmin -p Amstrad_DMP3000 -v socket://oldprinter.local:9100 -E -m raw
-lp -d Amstrad_DMP3000 invoice.txt
+sudo lpadmin -p Amstrad_DMP3000 -v socket://192.168.4.1:9100 -E -m raw
+lp -d Amstrad_DMP3000 document.txt
 ```
 
 ### 3. From Android
-- **Zero-Install Web Print:** Open `http://oldprinter.local` in Chrome on your phone. Type or paste your note, select font styles (NLQ, Bold, Condensed), and tap **Print Text Now**!
-- **Raw Socket Apps:** Use apps like **RawBT** or **PrintBot** pointing to `<ESP_IP>:9100`.
+1. Connect phone Wi-Fi to `Amstrad-DMP3000-<UID>`.
+2. **Zero-Install Web Print:** Open `http://192.168.4.1` in Chrome. Type or paste your note, select font styles (NLQ, Bold, Condensed), and tap **Print Text Now**!
+3. **Raw Socket Apps:** Use apps like **RawBT** or **PrintBot** pointing to `192.168.4.1:9100`.
 
 ---
 
