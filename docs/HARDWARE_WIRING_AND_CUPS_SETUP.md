@@ -127,16 +127,45 @@ Calculation: $V_{\text{ESP\_RX}} = 5\,\text{V} \times \frac{2\,\text{k}\Omega}{1
 | **7** | RX (GPIO3) | From Arduino **Pin 1 (TX)** via **Voltage Divider** | Stepped down from 5V to 3.3V. |
 | **8** | VCC | **+3.3V Dedicated Power Supply** | **See power supply warning below!** |
 
-### ⚠️ Critical Power Supply Requirement for ESP-01
+### ⚠️ Powering the ESP-01: 5V vs 3.3V and Regulators vs Voltage Dividers
 
-> [!CAUTION]
-> **DO NOT** power the ESP-01 module from the Arduino Nano's onboard `3.3V` pin!  
-> On Arduino Nano boards (especially clones using CH340 or FTDI chips), the internal 3.3V regulator supplies only **30 mA to 50 mA**. The ESP8266 draws up to **250–300 mA during Wi-Fi transmission bursts**.  
-> Powering the ESP8266 from the Nano's 3.3V pin will cause immediate brownouts, boot-loops, and corrupted serial packets.
->
-> **Recommended Solution:**  
-> 1. Use a dedicated 3.3V regulator such as an **AMS1117-3.3** or step-down module connected to the 5V rail.  
-> 2. Solder a **100 µF electrolytic capacitor** in parallel with a **0.1 µF (100 nF) ceramic capacitor** directly across the ESP-01 `VCC` (Pin 8) and `GND` (Pin 1) pins to absorb RF transmission current spikes.
+#### 1. Why Can't You Use the Arduino's Onboard 3.3V Pin (Even on USB)?
+Even if your Arduino Uno or Nano is plugged into a high-power USB port or wall charger, **the 3.3V pin cannot power an ESP8266**:
+- **On Arduino Nano:** There is no dedicated 3.3V regulator on the board! The `3V3` pin is fed from the internal reference LDO inside the USB-serial converter chip (FTDI FT232RL or CH340G).
+  - FT232RL pin 17 max current: **50 mA**
+  - CH340G pin 4 max current: **25–30 mA**
+- **On Arduino Uno:** The onboard LP2985 3.3V LDO is rated for a maximum of **50 mA** (150 mA on some revisions).
+- **ESP8266 Power Demand:** In idle listening mode, the ESP draws ~70 mA. When calibrating its radio or transmitting Wi-Fi packets, current spikes reach **170 mA to 280 mA** (with microsecond bursts over 300 mA).
+- **Consequence:** Connecting the ESP-01 to the Arduino 3.3V pin causes the voltage to instantly collapse from 3.3V down to ~2.2V. The ESP triggers a hardware brownout reset, entering an endless reboot loop (`rst cause:2, boot mode:(3,7)`). On a Nano, it can also permanently damage the CH340/FTDI chip.
+
+---
+
+#### 2. Can You Use a Voltage Divider for Power (VCC)?
+**NO! Never use a voltage divider to power an active circuit or microchip.**
+- A resistive voltage divider ($R_1$ and $R_2$) only works for **signals** (like logic pins with negligible current draw, $< 1\,\mu\text{A}$).
+- When used for power, the load (the ESP8266) is effectively in parallel with $R_2$. As the ESP's current draw fluctuates between 15 mA and 280 mA, its effective resistance changes wildly.
+- To keep the voltage stable under a 200 mA load, the divider resistors would have to be tiny (e.g. $10\,\Omega$ and $20\,\Omega$), which would continuously burn $> 160\,\text{mA}$ as pure heat ($> 0.8\,\text{W}$) and still drop down to 1.5V during RF transmit bursts.
+
+---
+
+#### 3. Can You Use the Arduino 5V Pin + a Voltage Regulator?
+**YES! This is the standard, reliable method.**
+The Arduino `5V` pin (when powered from USB) is connected directly to the USB power rail through a 500 mA polyfuse. Since the ATmega328P consumes only ~20 mA, you have over **400 mA of clean 5V current available** on the `5V` pin.
+
+You can step this 5V down to 3.3V using any low-cost linear regulator or dedicated adapter:
+
+```
+Arduino 5V Pin ──────────────> [ VIN ]
+                               AMS1117-3.3 ──> [ VOUT (3.3V) ] ───> ESP-01 Pin 8 (VCC)
+Arduino GND Pin ─────────────> [ GND ]                         ───> ESP-01 Pin 1 (GND)
+                                                 │
+                                              [100 µF] (Electrolytic across 3.3V & GND)
+```
+
+**Recommended Options:**
+1. **AMS1117-3.3 Module / Chip:** A tiny 3-pin LDO regulator module ($0.50) that accepts 5V input and delivers up to 800 mA at 3.3V.
+2. **ESP-01 Breadboard Adapter Board:** A $1 pre-made socket board with a built-in AMS1117-3.3 regulator and decoupling capacitor. You simply plug the ESP-01 into the socket and power it directly from Arduino 5V and GND.
+3. **Emergency Bench Trick (Two Diodes in Series):** If you don't have an AMS1117 on hand, two standard silicon diodes (e.g., 1N4001 or 1N4007) in series drop $2 \times 0.7\,\text{V} = 1.4\,\text{V}$, giving $5.0\,\text{V} - 1.4\,\text{V} = 3.6\,\text{V}$ (the absolute max for ESP8266). Combined with a 100 µF capacitor, this will work for bench testing.
 
 ---
 
