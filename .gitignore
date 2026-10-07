@@ -1,0 +1,33 @@
+# Compiled binaries and object files
+*.hex
+*.bin
+*.elf
+*.eep
+*.o
+*.a
+*.d
+*.dump
+
+# Build directories
+build/
+bin/
+out/
+.cache/
+
+# Arduino CLI build artifacts
+arduino_printer_driver/build/
+esp8266_cups_bridge/build/
+
+# Editor and IDE directories
+.vscode/
+.idea/
+*.swp
+*~
+*.bak
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Optional local overrides for private Wi-Fi credentials
+config.local.h
