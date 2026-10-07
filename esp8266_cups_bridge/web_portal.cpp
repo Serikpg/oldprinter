@@ -1,5 +1,6 @@
 #include "web_portal.h"
 #include "cups_raw_server.h"
+#include "wifi_manager.h"
 #include "config.h"
 #include <ESP8266WebServer.h>
 
@@ -50,9 +51,27 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
       letter-spacing: 0.05em;
     }
     header p {
-      margin: 0.25rem 0 0;
+      margin: 0.25rem 0 0.5rem;
       color: var(--text-muted);
       font-size: 0.9rem;
+    }
+    nav {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      margin-top: 0.75rem;
+    }
+    nav a {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 0.9rem;
+      border: 1px solid var(--border);
+      padding: 0.35rem 0.75rem;
+      border-radius: 6px;
+      background: #181820;
+    }
+    nav a:hover {
+      background: var(--border);
     }
     .card {
       background: var(--card-bg);
@@ -170,6 +189,10 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
     <header>
       <h1>AMSTRAD DMP3000</h1>
       <p>Wi-Fi CUPS & Raw Print Server (ESP8266 + Arduino Bridge)</p>
+      <nav>
+        <a href="/">Dashboard</a>
+        <a href="/wifi">Wi-Fi & UID Settings</a>
+      </nav>
     </header>
 
     <div id="alertBox" class="alert alert-success"></div>
@@ -226,6 +249,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
     <div class="card">
       <h2>Connection Details</h2>
       <div class="instructions">
+        <p><strong>Connected Wi-Fi:</strong> <span id="wifiSsid">...</span> (UID / BSSID: <code id="wifiBssid">...</code>)</p>
         <p><strong>CUPS (macOS / Linux):</strong> Add printer using AppSocket / JetDirect URI: <code>socket://oldprinter.local:9100</code> or <code>lpd://oldprinter.local/raw</code>. Select driver <em>Generic Text-Only</em> or <em>IBM Proprinter</em>.</p>
         <p><strong>Android:</strong> Print directly from this web page, or use print apps supporting port 9100 (e.g. <em>RawBT</em> or <em>PrintBot</em> targeting <code><span id="ipPlaceholder"></span>:9100</code>).</p>
       </div>
@@ -272,6 +296,8 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
           document.getElementById('badgeBuffer').innerText = data.buffer + ' B';
           document.getElementById('badgePrinted').innerText = data.printed + ' B';
           document.getElementById('ipPlaceholder').innerText = data.ip;
+          document.getElementById('wifiSsid').innerText = data.ssid;
+          document.getElementById('wifiBssid').innerText = data.bssid;
         })
         .catch(() => {});
     }
@@ -283,8 +309,205 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
 </html>
 )rawliteral";
 
+static const char WIFI_HTML[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wi-Fi & UID Settings - Amstrad DMP3000</title>
+  <style>
+    :root {
+      --bg: #1e1e24;
+      --card-bg: #2b2b36;
+      --accent: #4ade80;
+      --accent-hover: #22c55e;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --border: #3f3f50;
+      --danger: #ef4444;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 1rem;
+      display: flex;
+      justify-content: center;
+    }
+    .container { width: 100%; max-width: 720px; }
+    header { text-align: center; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: 1rem; }
+    header h1 { margin: 0; font-size: 1.5rem; color: var(--accent); }
+    nav { display: flex; justify-content: center; gap: 1rem; margin-top: 0.75rem; }
+    nav a { color: var(--accent); text-decoration: none; font-size: 0.9rem; border: 1px solid var(--border); padding: 0.35rem 0.75rem; border-radius: 6px; background: #181820; }
+    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; margin-bottom: 1.25rem; }
+    .card h2 { margin-top: 0; font-size: 1.15rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+    input[type=text], input[type=password] {
+      width: 100%; box-sizing: border-box; background: #181820; border: 1px solid var(--border);
+      color: #fff; padding: 0.65rem; border-radius: 6px; font-size: 0.95rem; margin-bottom: 0.75rem;
+    }
+    .btn { background: var(--accent); color: #0d1f12; font-weight: 600; border: none; padding: 0.65rem 1.25rem; border-radius: 6px; cursor: pointer; font-size: 0.95rem; }
+    .btn:hover { background: var(--accent-hover); }
+    .btn-secondary { background: #374151; color: #fff; }
+    table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; font-size: 0.85rem; }
+    th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--border); }
+    tr:hover td { background: #181820; cursor: pointer; }
+    .net-uid { font-family: monospace; color: var(--accent); }
+    .badge-signal { background: #166534; color: #86efac; padding: 0.15rem 0.4rem; border-radius: 4px; font-weight: bold; }
+    .alert { padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.85rem; display: none; background: #14532d; color: #86efac; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Wi-Fi & Network UID Configuration</h1>
+      <nav>
+        <a href="/">← Return to Dashboard</a>
+      </nav>
+    </header>
+
+    <div id="alertBox" class="alert"></div>
+
+    <div class="card">
+      <h2>Scan Networks (Search by Name or Hardware UID)</h2>
+      <p style="font-size:0.85rem; color:var(--text-muted);">Click "Scan" to discover all 2.4 GHz Wi-Fi access points in the air with their unique router hardware UID (BSSID / MAC address):</p>
+      <button class="btn btn-secondary" id="btnScan" onclick="scanWifi()">🔍 Scan Available Networks</button>
+
+      <div id="scanResult" style="margin-top: 1rem; display:none;">
+        <table>
+          <thead>
+            <tr>
+              <th>SSID (Network Name)</th>
+              <th>Hardware UID (BSSID)</th>
+              <th>Signal</th>
+              <th>Security</th>
+            </tr>
+          </thead>
+          <tbody id="scanTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Save Network Credentials (Stored in EEPROM)</h2>
+      <form id="wifiForm">
+        <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Network SSID:</label>
+        <input type="text" name="ssid" id="inpSsid" placeholder="e.g. MyHomeWiFi" required>
+
+        <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Target Router Hardware UID (BSSID, optional):</label>
+        <input type="text" name="bssid" id="inpBssid" placeholder="e.g. A4:2B:B0:12:34:56">
+
+        <label style="font-size:0.85rem; margin-bottom:0.75rem; display:flex; align-items:center; gap:0.5rem; cursor:pointer;">
+          <input type="checkbox" name="lock_bssid" id="chkLock" value="1">
+          Lock connection to this specific hardware router UID (ignores repeaters/clones)
+        </label>
+
+        <label style="font-size:0.85rem; color:var(--text-muted); display:block; margin-bottom:0.25rem;">Wi-Fi Password:</label>
+        <input type="password" name="password" id="inpPass" placeholder="Enter Wi-Fi password">
+
+        <button type="submit" class="btn">Save & Connect</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    function showAlert(msg) {
+      const box = document.getElementById('alertBox');
+      box.innerText = msg;
+      box.style.display = 'block';
+      setTimeout(() => { box.style.display = 'none'; }, 5000);
+    }
+
+    function selectNetwork(ssid, bssid) {
+      document.getElementById('inpSsid').value = ssid;
+      document.getElementById('inpBssid').value = bssid;
+      showAlert('Selected: ' + ssid + ' (UID: ' + bssid + '). Enter password below.');
+    }
+
+    function scanWifi() {
+      const btn = document.getElementById('btnScan');
+      btn.innerText = 'Scanning...';
+      btn.disabled = true;
+
+      fetch('/scan')
+        .then(r => r.json())
+        .then(list => {
+          btn.innerText = '🔍 Rescan Available Networks';
+          btn.disabled = false;
+          const tbody = document.getElementById('scanTableBody');
+          tbody.innerHTML = '';
+
+          if (list.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4">No networks found. Try scanning again.</td></tr>';
+          } else {
+            list.forEach(net => {
+              const tr = document.createElement('tr');
+              tr.onclick = () => selectNetwork(net.ssid, net.bssid);
+              tr.innerHTML = `
+                <td><strong>${net.ssid || '<em>(Hidden SSID)</em>'}</strong></td>
+                <td><span class="net-uid">${net.bssid}</span></td>
+                <td><span class="badge-signal">${net.rssi} dBm</span></td>
+                <td>${net.secure ? '🔒 WPA/WPA2' : '🔓 Open'}</td>
+              `;
+              tbody.appendChild(tr);
+            });
+          }
+          document.getElementById('scanResult').style.display = 'block';
+        })
+        .catch(err => {
+          btn.innerText = '🔍 Rescan';
+          btn.disabled = false;
+          showAlert('Scan error: ' + err);
+        });
+    }
+
+    document.getElementById('wifiForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const formData = new FormData(this);
+      fetch('/save_wifi', { method: 'POST', body: formData })
+        .then(r => r.text())
+        .then(txt => {
+          showAlert(txt + ' ESP will restart and connect automatically.');
+        })
+        .catch(err => showAlert('Error: ' + err));
+    });
+  </script>
+</body>
+</html>
+)rawliteral";
+
 static void handle_root() {
     server.send_P(200, "text/html", INDEX_HTML);
+}
+
+static void handle_wifi_page() {
+    server.send_P(200, "text/html", WIFI_HTML);
+}
+
+static void handle_scan() {
+    String json = wifi_manager_scan_json();
+    server.send(200, "application/json", json);
+}
+
+static void handle_save_wifi() {
+    String ssid = server.arg("ssid");
+    String pass = server.arg("password");
+    String bssid = server.arg("bssid");
+    bool lock = server.hasArg("lock_bssid") && server.arg("lock_bssid") == "1";
+
+    if (ssid.length() == 0) {
+        server.send(400, "text/plain", "SSID cannot be empty");
+        return;
+    }
+
+    if (wifi_manager_save(ssid, pass, bssid, lock)) {
+        server.send(200, "text/plain", "Credentials saved to EEPROM!");
+        delay(1000);
+        ESP.restart();
+    } else {
+        server.send(500, "text/plain", "Failed to write EEPROM");
+    }
 }
 
 static void handle_status() {
@@ -295,6 +518,8 @@ static void handle_status() {
     json += "\"buffer\":" + String(raw_server_get_buffer_fill()) + ",";
     json += "\"printed\":" + String(raw_server_get_bytes_printed()) + ",";
     json += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
+    json += "\"ssid\":\"" + wifi_manager_get_active_ssid() + "\",";
+    json += "\"bssid\":\"" + wifi_manager_get_active_bssid() + "\",";
     json += "\"flow_allowed\":" + String(raw_server_is_flow_allowed() ? "true" : "false");
     json += "}";
     server.send(200, "application/json", json);
@@ -319,27 +544,16 @@ static void handle_print() {
     bool dwidth   = server.hasArg("dwidth") && server.arg("dwidth") == "1";
     bool eject    = server.hasArg("eject") && server.arg("eject") == "1";
 
-    // Build byte stream
-    // Ensure IBM Character Set #2 is selected: ESC m 2
+    // Select IBM Character Set #2: ESC m 2
     raw_server_push_byte(0x1B);
     raw_server_push_byte('m');
     raw_server_push_byte(2);
 
-    if (nlq) {
-        raw_server_push_byte(0x1B); raw_server_push_byte('x'); raw_server_push_byte(1); // ESC x 1: NLQ on
-    }
-    if (bold) {
-        raw_server_push_byte(0x1B); raw_server_push_byte('E'); // ESC E: Bold on
-    }
-    if (cond) {
-        raw_server_push_byte(0x0F); // SI: Condensed on (17 CPI)
-    }
-    if (elite) {
-        raw_server_push_byte(0x1B); raw_server_push_byte('M'); // ESC M: Elite (12 CPI)
-    }
-    if (dwidth) {
-        raw_server_push_byte(0x1B); raw_server_push_byte('W'); raw_server_push_byte(1); // ESC W 1: Double width
-    }
+    if (nlq)    { raw_server_push_byte(0x1B); raw_server_push_byte('x'); raw_server_push_byte(1); }
+    if (bold)   { raw_server_push_byte(0x1B); raw_server_push_byte('E'); }
+    if (cond)   { raw_server_push_byte(0x0F); } // SI: Condensed on (17 CPI)
+    if (elite)  { raw_server_push_byte(0x1B); raw_server_push_byte('M'); } // ESC M: Elite (12 CPI)
+    if (dwidth) { raw_server_push_byte(0x1B); raw_server_push_byte('W'); raw_server_push_byte(1); }
 
     // Push payload text
     for (size_t i = 0; i < text.length(); i++) {
@@ -348,11 +562,11 @@ static void handle_print() {
     raw_server_push_byte('\r');
     raw_server_push_byte('\n');
 
-    // Reset styles back to normal defaults
+    // Reset styles back to defaults
     if (nlq)    { raw_server_push_byte(0x1B); raw_server_push_byte('x'); raw_server_push_byte(0); }
     if (bold)   { raw_server_push_byte(0x1B); raw_server_push_byte('F'); }
     if (cond)   { raw_server_push_byte(0x12); } // DC2: Cancel condensed
-    if (elite)  { raw_server_push_byte(0x1B); raw_server_push_byte('P'); } // ESC P: Cancel elite (Pica)
+    if (elite)  { raw_server_push_byte(0x1B); raw_server_push_byte('P'); }
     if (dwidth) { raw_server_push_byte(0x1B); raw_server_push_byte('W'); raw_server_push_byte(0); }
 
     if (eject) {
@@ -363,7 +577,7 @@ static void handle_print() {
 }
 
 static void handle_eject() {
-    raw_server_push_byte(0x0C); // FF (Form feed)
+    raw_server_push_byte(0x0C);
     server.send(200, "text/plain", "Form feed dispatched");
 }
 
@@ -373,9 +587,6 @@ static void handle_reset() {
 }
 
 void web_portal_print_test_page() {
-    // Escape sequences per Amstrad DMP3000 manual:
-    // ESC @: Reset printer defaults
-    // ESC m 2: Select IBM Character Set #2
     raw_server_push_byte(0x1B); raw_server_push_byte('@');
     raw_server_push_byte(0x1B); raw_server_push_byte('m'); raw_server_push_byte(2);
 
@@ -387,6 +598,8 @@ void web_portal_print_test_page() {
     page += "System Status:\r\n";
     page += " - Network Host: " + String(MDNS_HOSTNAME) + ".local\r\n";
     page += " - IP Address:   " + WiFi.localIP().toString() + "\r\n";
+    page += " - Active SSID:  " + wifi_manager_get_active_ssid() + "\r\n";
+    page += " - Router UID:   " + wifi_manager_get_active_bssid() + "\r\n";
     page += " - Port 9100:    RAW JetDirect / AppSocket (CUPS & macOS)\r\n";
     page += " - Port 515:     LPD Line Printer Daemon\r\n\r\n";
 
@@ -394,34 +607,28 @@ void web_portal_print_test_page() {
     page += "Typeface & Pitch Demonstrations:\r\n";
     page += " - Standard Pica (10 CPI, 80 columns per line)\r\n";
 
-    // Stream first section
     for (size_t i = 0; i < page.length(); i++) raw_server_push_byte((uint8_t)page[i]);
 
-    // Elite Mini (12 CPI): ESC M
     raw_server_push_byte(0x1B); raw_server_push_byte('M');
     String eliteStr = " - Elite Mini (12 CPI, 96 columns): ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789\r\n";
     for (size_t i = 0; i < eliteStr.length(); i++) raw_server_push_byte((uint8_t)eliteStr[i]);
-    raw_server_push_byte(0x1B); raw_server_push_byte('P'); // Cancel Elite
+    raw_server_push_byte(0x1B); raw_server_push_byte('P');
 
-    // Condensed (17 CPI): SI (0x0F)
     raw_server_push_byte(0x0F);
     String condStr = " - Condensed (17 CPI, 137 columns): The quick brown fox jumps over the lazy dog 1234567890\r\n";
     for (size_t i = 0; i < condStr.length(); i++) raw_server_push_byte((uint8_t)condStr[i]);
-    raw_server_push_byte(0x12); // Cancel Condensed
+    raw_server_push_byte(0x12);
 
-    // Emphasized (Bold): ESC E
     raw_server_push_byte(0x1B); raw_server_push_byte('E');
     String boldStr = " - Emphasized Bold Print Style\r\n";
     for (size_t i = 0; i < boldStr.length(); i++) raw_server_push_byte((uint8_t)boldStr[i]);
-    raw_server_push_byte(0x1B); raw_server_push_byte('F'); // Cancel Bold
+    raw_server_push_byte(0x1B); raw_server_push_byte('F');
 
-    // Near Letter Quality (NLQ): ESC x 1
     raw_server_push_byte(0x1B); raw_server_push_byte('x'); raw_server_push_byte(1);
     String nlqStr = " - Near Letter Quality (NLQ, 26 CPS) High Density Text\r\n";
     for (size_t i = 0; i < nlqStr.length(); i++) raw_server_push_byte((uint8_t)nlqStr[i]);
-    raw_server_push_byte(0x1B); raw_server_push_byte('x'); raw_server_push_byte(0); // Cancel NLQ
+    raw_server_push_byte(0x1B); raw_server_push_byte('x'); raw_server_push_byte(0);
 
-    // IBM CP437 Box Drawing and International Characters
     String box = "\r\n----------------------------------------------------------------------\r\n";
     box += "IBM Character Set #2 (CP437) Demonstration:\r\n";
     box += "+---------------------------------------------------+\r\n";
@@ -433,7 +640,6 @@ void web_portal_print_test_page() {
     box += "Self-test complete.\r\n";
     for (size_t i = 0; i < box.length(); i++) raw_server_push_byte((uint8_t)box[i]);
 
-    // Eject page (Form Feed)
     raw_server_push_byte(0x0C);
 }
 
@@ -444,6 +650,9 @@ static void handle_test_page() {
 
 void web_portal_init() {
     server.on("/", HTTP_GET, handle_root);
+    server.on("/wifi", HTTP_GET, handle_wifi_page);
+    server.on("/scan", HTTP_GET, handle_scan);
+    server.on("/save_wifi", HTTP_POST, handle_save_wifi);
     server.on("/status", HTTP_GET, handle_status);
     server.on("/print", HTTP_POST, handle_print);
     server.on("/eject", HTTP_POST, handle_eject);

@@ -6,12 +6,16 @@
  * on port 9100, LPD on port 515, mDNS/Bonjour discovery, and an embedded
  * Web Management & Print Portal on port 80) to an Arduino Uno/Nano parallel
  * printer driver over hardware Serial (115200 baud) with XON/XOFF flow control.
+ *
+ * Supports automatic Wi-Fi connection with non-volatile EEPROM storage and
+ * hardware router UID (BSSID) network scanning & locking.
  * ============================================================================
  */
 
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include "config.h"
+#include "wifi_manager.h"
 #include "cups_raw_server.h"
 #include "web_portal.h"
 
@@ -20,29 +24,11 @@ void setup() {
     Serial.begin(SERIAL_BAUD_RATE);
     delay(100);
 
-    // 2. Connect to Wi-Fi
-    WiFi.mode(WIFI_STA);
-    bool connected = false;
+    // 2. Initialize EEPROM and connect to Wi-Fi (loads saved credentials or AP fallback)
+    wifi_manager_init();
+    wifi_manager_connect();
 
-    if (String(DEFAULT_WIFI_SSID) != "YOUR_WIFI_SSID" && String(DEFAULT_WIFI_SSID).length() > 0) {
-        WiFi.begin(DEFAULT_WIFI_SSID, DEFAULT_WIFI_PASSWORD);
-
-        unsigned long startAttempt = millis();
-        while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 15000) {
-            delay(250);
-        }
-        if (WiFi.status() == WL_CONNECTED) {
-            connected = true;
-        }
-    }
-
-    // 3. Fallback to Access Point mode if Wi-Fi connection fails
-    if (!connected) {
-        WiFi.mode(WIFI_AP_STA);
-        WiFi.softAP(AP_FALLBACK_SSID, AP_FALLBACK_PASS);
-    }
-
-    // 4. Initialize mDNS / Bonjour Advertising for automatic CUPS & macOS discovery
+    // 3. Initialize mDNS / Bonjour Advertising for automatic CUPS & macOS discovery
     if (MDNS.begin(MDNS_HOSTNAME)) {
         // Port 9100 RAW JetDirect / AppSocket (primary CUPS / macOS backend)
         MDNS.addService("pdl-datastream", "tcp", RAW_JETDIRECT_PORT);
@@ -57,11 +43,11 @@ void setup() {
         MDNS.addService("http", "tcp", HTTP_PORT);
     }
 
-    // 5. Initialize TCP print servers and Web Portal
+    // 4. Initialize TCP print servers and Web Portal
     raw_server_init();
     web_portal_init();
 
-    // 6. Query initial status from Arduino
+    // 5. Query initial status from Arduino
     raw_server_send_command("!STATUS");
 }
 

@@ -116,13 +116,16 @@ arduino-cli compile --fqbn arduino:avr:uno arduino_printer_driver
 # 2. Upload to Arduino
 arduino-cli upload -p /dev/ttyUSB0 --fqbn arduino:avr:uno arduino_printer_driver
 
-# 3. Configure Wi-Fi credentials in esp8266_cups_bridge/config.h:
-#    #define DEFAULT_WIFI_SSID     "MyWiFi"
-#    #define DEFAULT_WIFI_PASSWORD "MyPassword"
-
-# 4. Compile and upload ESP8266 firmware
+# 3. Compile and upload ESP8266 firmware (no need to hardcode passwords!):
 arduino-cli compile --fqbn esp8266:esp8266:generic esp8266_cups_bridge
 arduino-cli upload -p /dev/ttyUSB1 --fqbn esp8266:esp8266:generic esp8266_cups_bridge
+
+# 4. First-time Wi-Fi setup (or when changing networks):
+#    - The ESP automatically creates a hotspot: "OldPrinter-Setup" (password: 12345678)
+#    - Connect with your phone or laptop and open http://192.168.4.1/wifi
+#    - Click "Scan Available Networks" to see all Wi-Fi APs with their hardware UIDs (BSSID)
+#    - Select your network, enter the password, and click "Save & Connect"
+#    - Credentials are saved in EEPROM flash; the ESP connects automatically forever after!
 ```
 
 ---

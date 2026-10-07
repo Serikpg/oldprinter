@@ -6,17 +6,31 @@
 // ============================================================================
 // Wi-Fi Configuration
 // ============================================================================
-// Set your Wi-Fi credentials here, or leave empty to boot into Access Point mode
-#define DEFAULT_WIFI_SSID     "YOUR_WIFI_SSID"
-#define DEFAULT_WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
+// Optional fallback hardcoded credentials (if EEPROM is empty)
+#define DEFAULT_WIFI_SSID     ""
+#define DEFAULT_WIFI_PASSWORD ""
 
-// Access Point fallback if Wi-Fi connection fails
+// Access Point fallback if no network is saved or connection fails
 #define AP_FALLBACK_SSID      "OldPrinter-Setup"
 #define AP_FALLBACK_PASS      "12345678"
 
 // Hostname for mDNS (accessible as http://oldprinter.local)
 #define MDNS_HOSTNAME         "oldprinter"
 #define PRINTER_MODEL_NAME    "Amstrad DMP3000 (IBM Mode)"
+
+// ============================================================================
+// EEPROM Persistent Wi-Fi Storage
+// ============================================================================
+#define EEPROM_CONFIG_SIZE    256
+#define EEPROM_MAGIC          0x50524E31  // "PRN1"
+
+struct SavedWiFiConfig {
+    uint32_t magic;
+    char     ssid[33];
+    char     password[65];
+    uint8_t  bssid[6];      // Hardware MAC / UID of target router/AP
+    bool     lock_bssid;    // If true, connects strictly to this specific AP UID
+};
 
 // ============================================================================
 // Network Ports
