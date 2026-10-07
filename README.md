@@ -67,15 +67,15 @@ oldprinter/
 
 | DB25 Pin | Centronics 36-Pin | Signal | Arduino Pin |
 | :---: | :---: | :--- | :---: |
-| **1** | 1 | $\overline{\text{STROBE}}$ | **D10** |
+| **1** | 1 | `/STROBE` | **D10** |
 | **2 – 9**| 2 – 9 | DATA 0 – 7 | **D2 – D9** |
-| **10** | 10 | $\overline{\text{ACK}}$ | **D12** |
+| **10** | 10 | `/ACK` | **D12** |
 | **11** | 11 | BUSY | **D11** |
 | **12** | 12 | PE (Paper End) | **A2** |
 | **13** | 13 | SELECT | **A3** |
-| **15** | 32 | $\overline{\text{FAULT}}$ | **A1** |
-| **16** | 31 | $\overline{\text{INIT}}$ | **A0** |
-| **17** | 36 | $\overline{\text{SLCT\_IN}}$ | **GND** |
+| **15** | 32 | `/FAULT` | **A1** |
+| **16** | 31 | `/INIT` | **A0** |
+| **17** | 36 | `/SLCT_IN` | **GND** |
 | **18 – 25**| 19 – 30 | GND | **GND** |
 
 ### 2. Arduino to ESP8266 (ESP-01 8-Pin)
@@ -100,7 +100,7 @@ oldprinter/
 
 On the rear of the Amstrad DMP3000, configure the switches to select **IBM Character Set #2**:
 - **Bank DS1:** DS1-1 to DS1-3: **ON** (USA), DS1-4: **OFF** (CR only), DS1-5: **OFF** (Paper sensor enabled), DS1-7: **ON**, DS1-8: **ON** (IBM Character Set #2).
-- **Bank DS2:** DS2-5: **ON** ($\overline{\text{SLCT\_IN}}$ internally asserted), all others **OFF**.
+- **Bank DS2:** DS2-5: **ON** (`/SLCT_IN` internally asserted), all others **OFF**.
 
 ---
 

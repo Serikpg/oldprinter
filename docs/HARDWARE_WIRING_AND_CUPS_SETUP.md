@@ -50,7 +50,7 @@ All logic levels between the DB25 parallel port and the Arduino ATmega328P opera
 
 | DB25 Pin | Centronics 36-Pin | Signal Designation | Direction (Rel. to Arduino) | Arduino Uno / Nano Pin | Function & Description |
 | :---: | :---: | :--- | :---: | :---: | :--- |
-| **1** | 1 | $\overline{\text{STROBE}}$ | **OUT** | **D10** | Active LOW pulse ($\ge 0.5\,\mu\text{s}$) to latch data into printer. |
+| **1** | 1 | `/STROBE` | **OUT** | **D10** | Active LOW pulse ($\ge 0.5\,\mu\text{s}$) to latch data into printer. |
 | **2** | 2 | DATA 0 (LSB) | **OUT** | **D2** | Parallel data bit 0. |
 | **3** | 3 | DATA 1 | **OUT** | **D3** | Parallel data bit 1. |
 | **4** | 4 | DATA 2 | **OUT** | **D4** | Parallel data bit 2. |
@@ -59,14 +59,14 @@ All logic levels between the DB25 parallel port and the Arduino ATmega328P opera
 | **7** | 7 | DATA 5 | **OUT** | **D7** | Parallel data bit 5. |
 | **8** | 8 | DATA 6 | **OUT** | **D8** | Parallel data bit 6. |
 | **9** | 9 | DATA 7 (MSB) | **OUT** | **D9** | Parallel data bit 7. |
-| **10** | 10 | $\overline{\text{ACK}}$ | **IN** | **D12** | Active LOW pulse ($\approx 5\,\mu\text{s}$) when byte is processed. |
+| **10** | 10 | `/ACK` | **IN** | **D12** | Active LOW pulse ($\approx 5\,\mu\text{s}$) when byte is processed. |
 | **11** | 11 | BUSY | **IN** | **D11** | HIGH when printer buffer full, printing, or offline. |
 | **12** | 12 | PE (Paper End) | **IN** | **A2 (D16)** | HIGH when printer is out of paper. |
 | **13** | 13 | SELECT | **IN** | **A3 (D17)** | HIGH when printer is online. |
-| **14** | 14 | $\overline{\text{AUTOFD}}$ | — | *NC or GND* | Leave unconnected (software handles CR/LF). |
-| **15** | 32 | $\overline{\text{FAULT}}$ / $\overline{\text{ERROR}}$ | **IN** | **A1 (D15)** | Active LOW on printer error or offline state. |
-| **16** | 31 | $\overline{\text{INIT}}$ | **OUT** | **A0 (D14)** | Active LOW pulse ($\ge 100\,\mu\text{s}$) to reset printer. |
-| **17** | 36 | $\overline{\text{SLCT\_IN}}$ | — | *GND* | Connect to GND to select printer (or float if DS2-5 is ON). |
+| **14** | 14 | `/AUTOFD` | — | *NC or GND* | Leave unconnected (software handles CR/LF). |
+| **15** | 32 | `/FAULT` / `/ERROR` | **IN** | **A1 (D15)** | Active LOW on printer error or offline state. |
+| **16** | 31 | `/INIT` | **OUT** | **A0 (D14)** | Active LOW pulse ($\ge 100\,\mu\text{s}$) to reset printer. |
+| **17** | 36 | `/SLCT_IN` | — | *GND* | Connect to GND to select printer (or float if DS2-5 is ON). |
 | **18–25** | 19–30 | GND | — | **GND** | Signal and logic ground reference (connect all together). |
 
 > [!NOTE]
@@ -112,7 +112,7 @@ Arduino TX (Pin 1, 5V)
        GND
 ```
 
-Calculation: $V_{\text{ESP\_RX}} = 5\,\text{V} \times \frac{2\,\text{k}\Omega}{1\,\text{k}\Omega + 2\,\text{k}\Omega} \approx 3.33\,\text{V}$.
+Calculation: $V_{\text{RX}} = 5\,\text{V} \times \frac{2\,\text{k}\Omega}{1\,\text{k}\Omega + 2\,\text{k}\Omega} \approx 3.33\,\text{V}$.
 
 ### Pin Connection Table
 
@@ -201,7 +201,7 @@ To configure the printer for standard IBM Mode (Table 3.2 — IBM Character Set 
 | **DS2-2** | **OFF** | Skip perforation disabled |
 | **DS2-3** | **OFF** | Standard character buffer |
 | **DS2-4** | **OFF** | Standard buffer allocation |
-| **DS2-5** | **ON** | $\overline{\text{SLCT\_IN}}$ automatically asserted internally |
+| **DS2-5** | **ON** | `/SLCT_IN` automatically asserted internally |
 | **DS2-6** | **ON** | Alarm buzzer enabled |
 | **DS2-7** | **OFF** | Power-on standard typeface (Bold OFF) |
 | **DS2-8** | **OFF** | Power-on standard typeface (Condensed OFF) |
