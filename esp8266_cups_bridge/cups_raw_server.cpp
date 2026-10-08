@@ -107,6 +107,12 @@ bool raw_server_is_flow_allowed() {
     return serial_flow_allowed;
 }
 
+bool raw_server_is_job_active() {
+    return ((rawClient && rawClient.connected()) ||
+            (lpdClient && lpdClient.connected()) ||
+            (buffer_count() > 0));
+}
+
 void raw_server_send_command(const String &cmd) {
     Serial.println(cmd);
 }
@@ -237,9 +243,12 @@ void raw_server_loop() {
     // ------------------------------------------------------------------------
     // 2. Handle Port 9100 RAW JetDirect TCP Client
     // ------------------------------------------------------------------------
+    static unsigned long raw_last_activity = 0;
+
     if (!rawClient || !rawClient.connected()) {
         if (rawServer.hasClient()) {
             rawClient = rawServer.available();
+            raw_last_activity = millis();
         }
     }
 
@@ -248,9 +257,15 @@ void raw_server_loop() {
         while (rawClient.available() > 0 && buffer_free() > 0) {
             uint8_t b = rawClient.read();
             raw_server_push_byte(b);
+            raw_last_activity = millis();
         }
         // If stream buffer is full, stop reading from rawClient.
         // TCP window throttling will automatically pause CUPS upstream!
+
+        // Release socket after 8 seconds of idle silence so other devices can print
+        if (rawClient.available() == 0 && (millis() - raw_last_activity > 8000)) {
+            rawClient.stop();
+        }
     }
 
     // ------------------------------------------------------------------------

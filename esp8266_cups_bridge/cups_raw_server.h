@@ -19,6 +19,7 @@ bool     raw_server_is_fault();
 uint32_t raw_server_get_bytes_printed();
 uint16_t raw_server_get_buffer_fill();
 bool     raw_server_is_flow_allowed();
+bool     raw_server_is_job_active();
 
 // Sends a control command to Arduino (e.g. "!STATUS", "!RESET", "!EJECT")
 void raw_server_send_command(const String &cmd);

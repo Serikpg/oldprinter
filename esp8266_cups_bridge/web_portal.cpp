@@ -341,6 +341,11 @@ static void handle_print() {
         return;
     }
 
+    if (raw_server_is_job_active()) {
+        server.send(429, "text/plain", "Printer is currently busy with a job from another device. Please wait a moment.");
+        return;
+    }
+
     // Optional formatting escape sequences
     bool nlq      = server.hasArg("nlq") && server.arg("nlq") == "1";
     bool bold     = server.hasArg("bold") && server.arg("bold") == "1";
@@ -448,6 +453,10 @@ void web_portal_print_test_page() {
 }
 
 static void handle_test_page() {
+    if (raw_server_is_job_active()) {
+        server.send(429, "text/plain", "Printer is busy with another active job.");
+        return;
+    }
     web_portal_print_test_page();
     server.send(200, "text/plain", "Test page sent to printer");
 }

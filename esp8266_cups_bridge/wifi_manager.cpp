@@ -22,7 +22,8 @@ void wifi_manager_init() {
 
     // If AP_PASSWORD is empty, launch an Open network for instant connection
     const char *pass = (strlen(AP_PASSWORD) >= 8) ? AP_PASSWORD : NULL;
-    WiFi.softAP(full_ssid.c_str(), pass);
+    // Allow up to 8 simultaneous Wi-Fi devices (hardware maximum on ESP8266)
+    WiFi.softAP(full_ssid.c_str(), pass, 1, 0, 8);
 
     // 4. Start Captive DNS server on port 53 (redirects all domains to 192.168.4.1)
     dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
