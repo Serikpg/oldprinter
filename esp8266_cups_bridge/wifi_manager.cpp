@@ -16,6 +16,12 @@ void wifi_manager_init() {
     // 2. Build network SSID including the unique hardware UID
     full_ssid = String(AP_SSID_PREFIX) + chip_uid;
 
+    Serial.println(F("[ESP] Starting Wi-Fi Access Point initialization..."));
+    Serial.print(F("[ESP] Chip UID: "));
+    Serial.println(chip_uid);
+    Serial.print(F("[ESP] Target SSID: "));
+    Serial.println(full_ssid);
+
     // Don't load/store SDK Wi-Fi config in flash; start the radio from a clean state
     WiFi.persistent(false);
     WiFi.mode(WIFI_OFF);
@@ -29,13 +35,19 @@ void wifi_manager_init() {
     bool ok = WiFi.softAPConfig(apIP, apIP, netMsk) &&
               WiFi.softAP(full_ssid.c_str(), pass, 6, 0, 4);
     if (!ok) {
-        // Fallback: minimal default AP configuration
+        Serial.println(F("[ESP] Custom SoftAP config failed, trying minimal fallback..."));
         WiFi.softAP(full_ssid.c_str(), pass);
+    } else {
+        Serial.print(F("[ESP] SoftAP active! SSID: "));
+        Serial.print(full_ssid);
+        Serial.print(F(" | IP: "));
+        Serial.println(apIP);
     }
 
     // 4. Start Captive DNS server on port 53 (redirects all domains to 192.168.4.1)
     dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
     dnsServer.start(DNS_PORT, "*", apIP);
+    Serial.println(F("[ESP] Captive DNS active on port 53"));
 }
 
 void wifi_manager_loop() {

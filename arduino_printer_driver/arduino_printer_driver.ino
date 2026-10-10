@@ -87,10 +87,10 @@ void loop() {
     while (Serial.available()) {
         uint8_t c = Serial.read();
 
-        // Support command protocol prefixed with '!' (e.g. !STATUS, !RESET, !EJECT)
-        if (c == '!' && buffer_count() == 0 && !in_command_mode) {
+        // Support command protocol ('!') and ESP diagnostic logs ('[')
+        if ((c == '!' || c == '[') && buffer_count() == 0 && !in_command_mode) {
             in_command_mode = true;
-            command_buffer = "!";
+            command_buffer = (char)c;
             continue;
         }
 
@@ -98,7 +98,10 @@ void loop() {
             if (c == '\n' || c == '\r') {
                 in_command_mode = false;
                 command_buffer.trim();
-                if (command_buffer == "!STATUS") {
+                if (command_buffer.startsWith("[")) {
+                    // Forward ESP log line directly to PC USB serial monitor
+                    Serial.println(command_buffer);
+                } else if (command_buffer == "!STATUS") {
                     send_status_report();
                 } else if (command_buffer == "!RESET") {
                     centronics_reset_printer();
@@ -113,7 +116,7 @@ void loop() {
                 command_buffer = "";
             } else {
                 command_buffer += (char)c;
-                if (command_buffer.length() > 32) {
+                if (command_buffer.length() > 96) {
                     in_command_mode = false;
                     command_buffer = "";
                 }

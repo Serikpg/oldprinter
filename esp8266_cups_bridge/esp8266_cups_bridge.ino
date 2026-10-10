@@ -25,7 +25,13 @@
 void setup() {
     // 1. Initialize Hardware UART (GPIO1 TX, GPIO3 RX)
     Serial.begin(SERIAL_BAUD_RATE);
-    delay(100);
+    delay(200);
+
+    Serial.println();
+    Serial.println(F("[ESP] ========================================"));
+    Serial.println(F("[ESP] Amstrad DMP3000 Network Print Bridge"));
+    Serial.println(F("[ESP] Firmware: v1.1 Standalone AP Mode"));
+    Serial.println(F("[ESP] ========================================"));
 
     // 2. Start Standalone Direct Wi-Fi Access Point (SSID contains unique Chip UID)
     wifi_manager_init();
@@ -43,13 +49,19 @@ void setup() {
 
         // Port 80 Web Portal
         MDNS.addService("http", "tcp", HTTP_PORT);
+        Serial.println(F("[ESP] mDNS responder active (http://oldprinter.local)"));
     }
 
     // 4. Initialize TCP print servers and Web Portal
     raw_server_init();
+    Serial.println(F("[ESP] Port 9100 (RAW JetDirect) server ready"));
+    Serial.println(F("[ESP] Port 515 (LPD) server ready"));
+
     web_portal_init();
+    Serial.println(F("[ESP] Port 80 (Web UI & Print Portal) ready"));
 
     // 5. Query initial status from Arduino
+    Serial.println(F("[ESP] Requesting printer status from Arduino..."));
     raw_server_send_command("!STATUS");
 }
 
