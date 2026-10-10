@@ -22,26 +22,34 @@ void wifi_manager_init() {
     Serial.print(F("[ESP] Target SSID: "));
     Serial.println(full_ssid);
 
-    // Don't load/store SDK Wi-Fi config in flash; start the radio from a clean state
+    Serial.println(F("[ESP] Testing 2.4 GHz RF radio by scanning for local APs..."));
+    WiFi.mode(WIFI_STA);
+    int n = WiFi.scanNetworks();
+    Serial.print(F("[ESP] RF Scan complete! Detected "));
+    Serial.print(n);
+    Serial.println(F(" networks:"));
+    for (int i = 0; i < n && i < 6; i++) {
+        Serial.print(F("[ESP]   * "));
+        Serial.print(WiFi.SSID(i));
+        Serial.print(F(" ("));
+        Serial.print(WiFi.RSSI(i));
+        Serial.println(F(" dBm)"));
+    }
+
+    // Now switch to SoftAP mode
     WiFi.persistent(false);
-    WiFi.mode(WIFI_OFF);
-    delay(100);
+    WiFi.disconnect(true);
+    delay(50);
     WiFi.mode(WIFI_AP);
 
-    // Lower TX power reduces current peaks on marginal 3.3V supplies (prevents brownout)
-    WiFi.setOutputPower(17.0);
-
-    const char *pass = (strlen(AP_PASSWORD) >= 8) ? AP_PASSWORD : NULL;
-    bool ok = WiFi.softAPConfig(apIP, apIP, netMsk) &&
-              WiFi.softAP(full_ssid.c_str(), pass, 6, 0, 4);
-    if (!ok) {
-        Serial.println(F("[ESP] Custom SoftAP config failed, trying minimal fallback..."));
-        WiFi.softAP(full_ssid.c_str(), pass);
-    } else {
+    bool ok = WiFi.softAP(full_ssid.c_str());
+    if (ok) {
         Serial.print(F("[ESP] SoftAP active! SSID: "));
         Serial.print(full_ssid);
         Serial.print(F(" | IP: "));
-        Serial.println(apIP);
+        Serial.println(WiFi.softAPIP());
+    } else {
+        Serial.println(F("[ESP] SoftAP ERROR: Failed to start!"));
     }
 
     // 4. Start Captive DNS server on port 53 (redirects all domains to 192.168.4.1)

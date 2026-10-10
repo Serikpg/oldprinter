@@ -26,6 +26,7 @@ void setup() {
     // 1. Initialize Hardware UART (GPIO1 TX, GPIO3 RX)
     Serial.begin(SERIAL_BAUD_RATE);
     delay(200);
+    Serial.setDebugOutput(true);
 
     Serial.println();
     Serial.println(F("[ESP] ========================================"));
@@ -77,4 +78,14 @@ void loop() {
 
     // Service Web Portal requests
     web_portal_loop();
+
+    // Periodic heartbeat to serial
+    static unsigned long last_hb = 0;
+    if (millis() - last_hb > 5000) {
+        last_hb = millis();
+        Serial.print(F("[ESP] Heartbeat - Free heap: "));
+        Serial.print(ESP.getFreeHeap());
+        Serial.print(F(" | Wi-Fi Clients: "));
+        Serial.println(WiFi.softAPgetStationNum());
+    }
 }
