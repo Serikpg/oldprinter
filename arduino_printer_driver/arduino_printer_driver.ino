@@ -87,7 +87,7 @@ void loop() {
     while (Serial.available()) {
         uint8_t c = Serial.read();
 
-        // Support command protocol ('!') and ESP diagnostic logs ('[')
+        // Support command protocol ('!') and ESP diagnostic logs ('[ESP]')
         if ((c == '!' || c == '[') && buffer_count() == 0 && !in_command_mode) {
             in_command_mode = true;
             command_buffer = (char)c;
@@ -98,7 +98,7 @@ void loop() {
             if (c == '\n' || c == '\r') {
                 in_command_mode = false;
                 command_buffer.trim();
-                if (command_buffer.startsWith("[")) {
+                if (command_buffer.startsWith("[ESP]")) {
                     // Forward ESP log line directly to PC USB serial monitor
                     Serial.println(command_buffer);
                 } else if (command_buffer == "!STATUS") {
@@ -111,13 +111,29 @@ void loop() {
                     centronics_write_byte(0x0C); // Form feed
                     Serial.println(F("OK: Form Feed Dispatched"));
                 } else {
-                    Serial.println(F("ERR: Unknown Command"));
+                    // It was actual print data that happened to start with '[' or '!'
+                    for (unsigned int i = 0; i < command_buffer.length(); i++) {
+                        if (!buffer_is_full()) {
+                            rx_buffer[rx_head] = command_buffer[i];
+                            rx_head = (rx_head + 1) % RING_BUFFER_SIZE;
+                        }
+                    }
+                    if (!buffer_is_full()) {
+                        rx_buffer[rx_head] = '\n';
+                        rx_head = (rx_head + 1) % RING_BUFFER_SIZE;
+                    }
                 }
                 command_buffer = "";
             } else {
                 command_buffer += (char)c;
                 if (command_buffer.length() > 96) {
                     in_command_mode = false;
+                    for (unsigned int i = 0; i < command_buffer.length(); i++) {
+                        if (!buffer_is_full()) {
+                            rx_buffer[rx_head] = command_buffer[i];
+                            rx_head = (rx_head + 1) % RING_BUFFER_SIZE;
+                        }
+                    }
                     command_buffer = "";
                 }
             }
@@ -138,8 +154,11 @@ void loop() {
     }
 
     // ------------------------------------------------------------------------
-    // 2. Dispatch buffered bytes to parallel printer port
+    // 2. Dispatch buffered bytes to parallel printer port & live console echo
     // ------------------------------------------------------------------------
+    static char echo_buf[80];
+    static uint8_t echo_len = 0;
+
     if (rx_head != rx_tail) {
         // If printer has an error or is out of paper, wait and indicate on LED
         bool pe = centronics_is_paper_out();
@@ -172,12 +191,40 @@ void loop() {
 #endif
                 centronics_write_byte(char_to_send);
                 last_char_sent = char_to_send;
+
+                // Live print monitor echo to PC USB serial console
+                if (char_to_send == '\n' || char_to_send == '\r') {
+                    if (echo_len > 0) {
+                        echo_buf[echo_len] = '\0';
+                        Serial.print(F("[PRINT DATA] "));
+                        Serial.println(echo_buf);
+                        echo_len = 0;
+                    }
+                } else if (char_to_send >= 32 && char_to_send <= 126) {
+                    if (echo_len < sizeof(echo_buf) - 1) {
+                        echo_buf[echo_len++] = (char)char_to_send;
+                    } else {
+                        echo_buf[echo_len] = '\0';
+                        Serial.print(F("[PRINT DATA] "));
+                        Serial.println(echo_buf);
+                        echo_len = 0;
+                        echo_buf[echo_len++] = (char)char_to_send;
+                    }
+                } else if (char_to_send == 0x0C) {
+                    Serial.println(F("[PRINT DATA] <FORM FEED (Page Eject)>"));
+                }
             }
 
             digitalWrite(PIN_LED, LOW);
         }
     } else {
-        // Buffer is empty - turn off LED
+        // Buffer is empty - flush any partial line in echo buffer
+        if (echo_len > 0) {
+            echo_buf[echo_len] = '\0';
+            Serial.print(F("[PRINT DATA] "));
+            Serial.println(echo_buf);
+            echo_len = 0;
+        }
         if (!centronics_is_paper_out() && !centronics_is_fault()) {
             digitalWrite(PIN_LED, LOW);
         }
