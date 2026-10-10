@@ -16,14 +16,22 @@ void wifi_manager_init() {
     // 2. Build network SSID including the unique hardware UID
     full_ssid = String(AP_SSID_PREFIX) + chip_uid;
 
-    // 3. Set Wi-Fi to Access Point mode only (direct device-to-printer link)
+    // Don't load/store SDK Wi-Fi config in flash; start the radio from a clean state
+    WiFi.persistent(false);
+    WiFi.mode(WIFI_OFF);
+    delay(100);
     WiFi.mode(WIFI_AP);
-    WiFi.softAPConfig(apIP, apIP, netMsk);
 
-    // If AP_PASSWORD is empty, launch an Open network for instant connection
+    // Lower TX power reduces current peaks on marginal 3.3V supplies (prevents brownout)
+    WiFi.setOutputPower(17.0);
+
     const char *pass = (strlen(AP_PASSWORD) >= 8) ? AP_PASSWORD : NULL;
-    // Allow up to 4 simultaneous Wi-Fi devices (hardware maximum on ESP8266 SDK)
-    WiFi.softAP(full_ssid.c_str(), pass, 1, 0, 4);
+    bool ok = WiFi.softAPConfig(apIP, apIP, netMsk) &&
+              WiFi.softAP(full_ssid.c_str(), pass, 6, 0, 4);
+    if (!ok) {
+        // Fallback: minimal default AP configuration
+        WiFi.softAP(full_ssid.c_str(), pass);
+    }
 
     // 4. Start Captive DNS server on port 53 (redirects all domains to 192.168.4.1)
     dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
