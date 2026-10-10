@@ -218,13 +218,21 @@ void loop() {
             digitalWrite(PIN_LED, LOW);
         }
     } else {
-        // Buffer is empty - flush any partial line in echo buffer
+        // Buffer is empty - only flush echo buffer if idle for > 150 ms
+        static unsigned long last_rx_empty = 0;
         if (echo_len > 0) {
-            echo_buf[echo_len] = '\0';
-            Serial.print(F("[PRINT DATA] "));
-            Serial.println(echo_buf);
-            echo_len = 0;
+            if (last_rx_empty == 0) last_rx_empty = millis();
+            if (millis() - last_rx_empty > 150) {
+                echo_buf[echo_len] = '\0';
+                Serial.print(F("[PRINT DATA] "));
+                Serial.println(echo_buf);
+                echo_len = 0;
+                last_rx_empty = 0;
+            }
+        } else {
+            last_rx_empty = 0;
         }
+
         if (!centronics_is_paper_out() && !centronics_is_fault()) {
             digitalWrite(PIN_LED, LOW);
         }

@@ -26,7 +26,7 @@ void setup() {
     // 1. Initialize Hardware UART (GPIO1 TX, GPIO3 RX)
     Serial.begin(SERIAL_BAUD_RATE);
     delay(200);
-    Serial.setDebugOutput(true);
+    Serial.setDebugOutput(false);
 
     Serial.println();
     Serial.println(F("[ESP] ========================================"));
