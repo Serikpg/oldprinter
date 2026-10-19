@@ -47,8 +47,12 @@ bool centronics_is_paper_out() {
 }
 
 bool centronics_is_fault() {
+#if IGNORE_FAULT_PIN
+    return false;
+#else
     // /FAULT is active LOW on error condition
     return (digitalRead(PIN_FAULT) == LOW);
+#endif
 }
 
 bool centronics_is_selected() {

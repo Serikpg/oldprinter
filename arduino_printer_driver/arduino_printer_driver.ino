@@ -88,7 +88,7 @@ void loop() {
         uint8_t c = Serial.read();
 
         // Support command protocol ('!') and ESP diagnostic logs ('[ESP]')
-        if ((c == '!' || c == '[') && buffer_count() == 0 && !in_command_mode) {
+        if ((c == '!' || c == '[') && !in_command_mode) {
             in_command_mode = true;
             command_buffer = (char)c;
             continue;
@@ -99,7 +99,7 @@ void loop() {
                 in_command_mode = false;
                 command_buffer.trim();
                 if (command_buffer.startsWith("[ESP]")) {
-                    // Forward ESP log line directly to PC USB serial monitor
+                    // Forward ESP log line directly to PC USB serial monitor, NEVER to printer
                     Serial.println(command_buffer);
                 } else if (command_buffer == "!STATUS") {
                     send_status_report();
@@ -126,15 +126,20 @@ void loop() {
                 command_buffer = "";
             } else {
                 command_buffer += (char)c;
-                if (command_buffer.length() > 96) {
-                    in_command_mode = false;
-                    for (unsigned int i = 0; i < command_buffer.length(); i++) {
-                        if (!buffer_is_full()) {
-                            rx_buffer[rx_head] = command_buffer[i];
-                            rx_head = (rx_head + 1) % RING_BUFFER_SIZE;
+                if (command_buffer.length() > 120) {
+                    if (command_buffer.startsWith("[ESP]")) {
+                        // Prevent long log lines from overflowing into print buffer
+                        command_buffer = "[ESP]";
+                    } else {
+                        in_command_mode = false;
+                        for (unsigned int i = 0; i < command_buffer.length(); i++) {
+                            if (!buffer_is_full()) {
+                                rx_buffer[rx_head] = command_buffer[i];
+                                rx_head = (rx_head + 1) % RING_BUFFER_SIZE;
+                            }
                         }
+                        command_buffer = "";
                     }
-                    command_buffer = "";
                 }
             }
             continue;
