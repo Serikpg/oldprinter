@@ -80,75 +80,110 @@ void setup() {
     send_status_report();
 }
 
+static bool is_esp_diagnostic(const String &s) {
+    if (s.startsWith("[ESP]")) return true;
+    if (s.indexOf("Heartbeat") >= 0) return true;
+    if (s.indexOf("Free heap") >= 0) return true;
+    if (s.indexOf("Wi-Fi Clients") >= 0) return true;
+    if (s.indexOf("SoftAP") >= 0) return true;
+    if (s.indexOf("Chip UID") >= 0) return true;
+    if (s.indexOf("Target SSID") >= 0) return true;
+    if (s.indexOf("station:") >= 0) return true;
+    if (s.indexOf("aid ") >= 0) return true;
+    if (s.indexOf("bcn ") >= 0) return true;
+    if (s.indexOf("scandone") >= 0) return true;
+    if (s.indexOf("mode :") >= 0) return true;
+    if (s.indexOf("add if") >= 0) return true;
+    if (s.indexOf("del if") >= 0) return true;
+    if (s.indexOf("dhcp server") >= 0) return true;
+    if (s.indexOf("fpm close") >= 0) return true;
+    if (s.indexOf("Port 9100") >= 0) return true;
+    if (s.indexOf("Port 515") >= 0) return true;
+    if (s.indexOf("Port 80") >= 0) return true;
+    if (s.indexOf("Requesting printer status") >= 0) return true;
+    return false;
+}
+
 void loop() {
     // ------------------------------------------------------------------------
-    // 1. Read incoming bytes from ESP8266 Serial into ring buffer
+    // 1. Read incoming bytes from ESP8266 Serial with strict diagnostic filter
     // ------------------------------------------------------------------------
+    static String line_buffer = "";
+
     while (Serial.available()) {
         uint8_t c = Serial.read();
 
-        // Support command protocol ('!') and ESP diagnostic logs ('[ESP]')
-        if ((c == '!' || c == '[') && !in_command_mode) {
-            in_command_mode = true;
-            command_buffer = (char)c;
-            continue;
-        }
-
-        if (in_command_mode) {
-            if (c == '\n' || c == '\r') {
-                in_command_mode = false;
-                command_buffer.trim();
-                if (command_buffer.startsWith("[ESP]")) {
-                    // Forward ESP log line directly to PC USB serial monitor, NEVER to printer
-                    Serial.println(command_buffer);
-                } else if (command_buffer == "!STATUS") {
-                    send_status_report();
-                } else if (command_buffer == "!RESET") {
-                    centronics_reset_printer();
-                    cp437_reset();
-                    Serial.println(F("OK: Printer Reset"));
-                } else if (command_buffer == "!EJECT" || command_buffer == "!FF") {
-                    centronics_write_byte(0x0C); // Form feed
-                    Serial.println(F("OK: Form Feed Dispatched"));
-                } else {
-                    // It was actual print data that happened to start with '[' or '!'
-                    for (unsigned int i = 0; i < command_buffer.length(); i++) {
+        // Control characters / Escape sequences (except \r, \n, \t) bypass line buffering
+        if (c < 32 && c != '\r' && c != '\n' && c != '\t') {
+            if (line_buffer.length() > 0) {
+                if (!is_esp_diagnostic(line_buffer)) {
+                    for (unsigned int i = 0; i < line_buffer.length(); i++) {
                         if (!buffer_is_full()) {
-                            rx_buffer[rx_head] = command_buffer[i];
+                            rx_buffer[rx_head] = line_buffer[i];
                             rx_head = (rx_head + 1) % RING_BUFFER_SIZE;
                         }
                     }
-                    if (!buffer_is_full()) {
-                        rx_buffer[rx_head] = '\n';
-                        rx_head = (rx_head + 1) % RING_BUFFER_SIZE;
-                    }
                 }
-                command_buffer = "";
-            } else {
-                command_buffer += (char)c;
-                if (command_buffer.length() > 120) {
-                    if (command_buffer.startsWith("[ESP]")) {
-                        // Prevent long log lines from overflowing into print buffer
-                        command_buffer = "[ESP]";
-                    } else {
-                        in_command_mode = false;
-                        for (unsigned int i = 0; i < command_buffer.length(); i++) {
-                            if (!buffer_is_full()) {
-                                rx_buffer[rx_head] = command_buffer[i];
-                                rx_head = (rx_head + 1) % RING_BUFFER_SIZE;
-                            }
-                        }
-                        command_buffer = "";
-                    }
-                }
+                line_buffer = "";
+            }
+            if (!buffer_is_full()) {
+                rx_buffer[rx_head] = c;
+                rx_head = (rx_head + 1) % RING_BUFFER_SIZE;
             }
             continue;
         }
 
-        // Put byte into buffer
-        if (!buffer_is_full()) {
-            rx_buffer[rx_head] = c;
-            rx_head = (rx_head + 1) % RING_BUFFER_SIZE;
+        // Handle line endings
+        if (c == '\n' || c == '\r') {
+            if (line_buffer.length() > 0) {
+                line_buffer.trim();
+                if (line_buffer.length() > 0) {
+                    if (is_esp_diagnostic(line_buffer)) {
+                        // Diagnostic message from ESP: forward to PC USB monitor, NEVER to printer!
+                        Serial.print(F("[FILTERED ESP LOG] "));
+                        Serial.println(line_buffer);
+                    } else if (line_buffer == "!STATUS") {
+                        send_status_report();
+                    } else if (line_buffer == "!RESET") {
+                        centronics_reset_printer();
+                        cp437_reset();
+                        Serial.println(F("OK: Printer Reset"));
+                    } else if (line_buffer == "!EJECT" || line_buffer == "!FF") {
+                        centronics_write_byte(0x0C);
+                        Serial.println(F("OK: Form Feed Dispatched"));
+                    } else {
+                        // Valid print text: push into ring buffer
+                        for (unsigned int i = 0; i < line_buffer.length(); i++) {
+                            if (!buffer_is_full()) {
+                                rx_buffer[rx_head] = line_buffer[i];
+                                rx_head = (rx_head + 1) % RING_BUFFER_SIZE;
+                            }
+                        }
+                        if (!buffer_is_full()) {
+                            rx_buffer[rx_head] = '\n';
+                            rx_head = (rx_head + 1) % RING_BUFFER_SIZE;
+                        }
+                    }
+                }
+                line_buffer = "";
+            }
+            continue;
+        }
+
+        // Printable text character
+        line_buffer += (char)c;
+        if (line_buffer.length() > 96) {
+            if (is_esp_diagnostic(line_buffer)) {
+                line_buffer = "";
+            } else {
+                for (unsigned int i = 0; i < line_buffer.length(); i++) {
+                    if (!buffer_is_full()) {
+                        rx_buffer[rx_head] = line_buffer[i];
+                        rx_head = (rx_head + 1) % RING_BUFFER_SIZE;
+                    }
+                }
+                line_buffer = "";
+            }
         }
 
         // Software flow control: send XOFF when reaching high-water mark
