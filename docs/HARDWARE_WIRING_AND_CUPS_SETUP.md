@@ -54,20 +54,32 @@ All logic levels between the DB25 parallel port and the Arduino ATmega328P opera
 | **2** | 2 | DATA 0 (LSB) | **OUT** | **D2** | Parallel data bit 0. |
 | **3** | 3 | DATA 1 | **OUT** | **D3** | Parallel data bit 1. |
 | **4** | 4 | DATA 2 | **OUT** | **D4** | Parallel data bit 2. |
-| **5** | 5 | DATA 3 | **OUT** | **D5** | Parallel data bit 3. |
-| **6** | 6 | DATA 4 | **OUT** | **D6** | Parallel data bit 4. |
+| **5** | 5 | DATA 3 | **OUT** | **D5** | Parallel data bit 3. *(Verify: do not swap with D6!)* |
+| **6** | 6 | DATA 4 | **OUT** | **D6** | Parallel data bit 4. *(Verify: do not swap with D5!)* |
 | **7** | 7 | DATA 5 | **OUT** | **D7** | Parallel data bit 5. |
 | **8** | 8 | DATA 6 | **OUT** | **D8** | Parallel data bit 6. |
 | **9** | 9 | DATA 7 (MSB) | **OUT** | **D9** | Parallel data bit 7. |
 | **10** | 10 | `/ACK` | **IN** | **D12** | Active LOW pulse ($\approx 5\,\mu\text{s}$) when byte is processed. |
-| **11** | 11 | BUSY | **IN** | **D11** | HIGH when printer buffer full, printing, or offline. |
+| **11** | 11 | BUSY | **IN** | **D11** | HIGH when printer buffer full, printing, or offline. Primary flow control. |
 | **12** | 12 | PE (Paper End) | **IN** | **A2 (D16)** | HIGH when printer is out of paper. |
 | **13** | 13 | SELECT | **IN** | **A3 (D17)** | HIGH when printer is online. |
 | **14** | 14 | `/AUTOFD` | — | *NC or GND* | Leave unconnected (software handles CR/LF). |
-| **15** | 32 | `/FAULT` / `/ERROR` | **IN** | **A1 (D15)** | Active LOW on printer error or offline state. |
-| **16** | 31 | `/INIT` | **OUT** | **A0 (D14)** | Active LOW pulse ($\ge 100\,\mu\text{s}$) to reset printer. |
-| **17** | 36 | `/SLCT_IN` | — | *GND* | Connect to GND to select printer (or float if DS2-5 is ON). |
-| **18–25** | 19–30 | GND | — | **GND** | Signal and logic ground reference (connect all together). |
+| **15** | 32 | `/FAULT` / `/ERROR` | **IN** | *Leave Disconnected* (A1) | Ignored in software (`IGNORE_FAULT_PIN true`) to prevent false freezes. |
+| **16** | 31 | `/INIT` | **OUT** | **A0 (D14)** | Active LOW pulse ($\ge 100\,\mu\text{s}$) to reset printer on boot. |
+| **17** | 36 | `/SLCT_IN` | — | **GND** | Connect to GND to force printer selected (or toggle DIP switch DS2-5 ON). |
+| **18–25** | 19–30 | GND | — | **GND** | Signal and logic ground reference (connect at least Pin 18 to GND). |
+
+> [!TIP]
+> **Data Bit 3 vs Bit 4 Wiring Trap:**
+> Double check that **DB25 Pin 5 connects to Arduino D5** and **DB25 Pin 6 connects to Arduino D6**. If these two wires are transposed, bit 3 and bit 4 get swapped in every ASCII byte:
+> - `'H'` (`0x48`) becomes `'P'` (`0x50`)
+> - `'l'` (`0x6C`) becomes `'t'` (`0x74`)
+> - `'o'` (`0x6F`) becomes `'w'` (`0x77`)
+> - Turning `Hello` into `Pettw` and `Heartbeat` into `Peajlbeal`!
+
+> [!NOTE]
+> **Fault Pin Disconnection:**
+> In vintage Centronics cables and printers, Pin 15 (`/FAULT`) is often grounded or asserted when the printer is offline or when using cut-sheet paper. The Arduino firmware configures `IGNORE_FAULT_PIN = true` by default and uses `BUSY` and `PE` for hardware control. **Leave Arduino pin A1 disconnected** to allow uninterrupted printing and page ejects.
 
 > [!NOTE]
 > DB25 pins 18 through 25 are ground pins. Wire at least one (ideally two or more) directly to the Arduino's `GND` pin to maintain clean signal references and eliminate ground loops.
@@ -152,20 +164,36 @@ Even if your Arduino Uno or Nano is plugged into a high-power USB port or wall c
 **YES! This is the standard, reliable method.**
 The Arduino `5V` pin (when powered from USB) is connected directly to the USB power rail through a 500 mA polyfuse. Since the ATmega328P consumes only ~20 mA, you have over **400 mA of clean 5V current available** on the `5V` pin.
 
-You can step this 5V down to 3.3V using any low-cost linear regulator or dedicated adapter:
+You can step this 5V down to 3.3V using any low-cost linear regulator or dedicated buck converter:
 
 ```
 Arduino 5V Pin ──────────────> [ VIN ]
                                AMS1117-3.3 ──> [ VOUT (3.3V) ] ───> ESP-01 Pin 8 (VCC)
 Arduino GND Pin ─────────────> [ GND ]                         ───> ESP-01 Pin 1 (GND)
                                                  │
-                                              [100 µF] (Electrolytic across 3.3V & GND)
+                                           [100 µF – 470 µF] (Electrolytic across 3.3V & GND)
 ```
 
-**Recommended Options:**
+> [!IMPORTANT]
+> **Mandatory Decoupling Capacitor (100 µF to 470 µF):**
+> You **MUST** solder or plug an electrolytic capacitor (100 µF to 470 µF, rated 6.3V or higher) directly across the ESP-01 **`VCC`** and **`GND`** pins.
+> 
+> **Why is this critical?**
+> During boot, the ESP8266 initializes its physical radio layer (`phy_init`) and runs RF transmitter power calibration (`ram_rfcal_pwrctrl` / `ram_rfcal_txiq`). At that exact microsecond, the RF power amplifier turns on at +20 dBm and draws an instantaneous **350–400 mA current pulse**.
+> 
+> Without a local reservoir capacitor:
+> - Even with a 2A-rated buck converter or regulator, the feedback loop cannot react fast enough. The 3.3V rail sags below ~2.7V for a few microseconds.
+> - A standard multimeter will falsely report "stable 3.4V" because it only measures average DC voltage.
+> - Symptoms of missing capacitor:
+>   - RF scanner reports `Detected 0 networks` even in rooms with multiple Wi-Fi routers.
+>   - The Access Point beacon never appears on laptops/smartphones.
+>   - Serial console outputs: `Fatal exception 0 (IllegalInstructionCause): epc1=0x40242f63 in ram_rfcal_txiq`.
+> - Adding a **200 µF – 470 µF capacitor** right across `VCC` and `GND` completely eliminates this sag and guarantees 100% RF transmit stability.
+
+**Recommended Regulator Options:**
 1. **AMS1117-3.3 Module / Chip:** A tiny 3-pin LDO regulator module ($0.50) that accepts 5V input and delivers up to 800 mA at 3.3V.
-2. **ESP-01 Breadboard Adapter Board:** A $1 pre-made socket board with a built-in AMS1117-3.3 regulator and decoupling capacitor. You simply plug the ESP-01 into the socket and power it directly from Arduino 5V and GND.
-3. **Emergency Bench Trick (Two Diodes in Series):** If you don't have an AMS1117 on hand, two standard silicon diodes (e.g., 1N4001 or 1N4007) in series drop $2 \times 0.7\,\text{V} = 1.4\,\text{V}$, giving $5.0\,\text{V} - 1.4\,\text{V} = 3.6\,\text{V}$ (the absolute max for ESP8266). Combined with a 100 µF capacitor, this will work for bench testing.
+2. **Step-Down Buck Converter (e.g. MP1584 / Mini-360):** Very efficient. Note that buck regulators require a 1.5V+ dropout headroom; ensure input is at least 5V and keep the 200 µF decoupling capacitor on the 3.3V output rail.
+3. **ESP-01 Breadboard Adapter Board:** A $1 pre-made socket board with a built-in AMS1117-3.3 regulator and decoupling capacitor.
 
 ---
 
@@ -187,11 +215,16 @@ To configure the printer for standard IBM Mode (Table 3.2 — IBM Character Set 
 | **DS1-1** | **ON** | USA character set |
 | **DS1-2** | **ON** | USA character set |
 | **DS1-3** | **ON** | USA character set |
-| **DS1-4** | **OFF** | `CR` only (Arduino firmware handles LF/CR translation to prevent staircase effect) |
+| **DS1-4** | **OFF** | **`CR` only (Single line spacing)**. *Crucial:* If set to ON, the printer performs an Auto-LF on every CR, resulting in an unwanted empty blank line (double spacing) between rows! |
 | **DS1-5** | **OFF** | Paper-out sensor enabled (halts printing when out of paper) |
 | **DS1-6** | **OFF** | Page length 11 inches (standard fanfold paper) |
 | **DS1-7** | **ON** | Character set select: IBM Set |
 | **DS1-8** | **ON** | Character set select: **IBM Character Set #2** (Factory Default) |
+
+> [!TIP]
+> **Line Spacing Troubleshooting:**
+> - If your prints have an **empty line between lines of text** (double spacing), check **DS1-4**: it must be toggled **OFF**. With DS1-4 OFF, standard single spacing (6 Lines Per Inch) is achieved.
+> - For dense/compact vertical line spacing, the DMP3000 also supports **8 Lines Per Inch (1/8" pitch)** via the escape sequence `ESC 0` (`\x1B0`).
 
 ### Bank DS2 (10 Switches)
 
@@ -333,9 +366,59 @@ If you run CUPS on a Raspberry Pi or home server on your network with Avahi/AirP
 
 | Symptom | Probable Cause | Corrective Action |
 | :--- | :--- | :--- |
-| **ESP-01 constantly restarts / reboots** | Insufficient 3.3V power during Wi-Fi transmit bursts | Do not power ESP-01 from Arduino 3.3V pin. Use external 3.3V regulator (AMS1117) and add a 100 µF capacitor across ESP VCC/GND. |
+| **`Hello` prints as `Pettw` (or scrambled letters)** | **Bits 3 and 4 are swapped** | Swap Arduino **Pin D5** and **Pin D6**. (Verify: DB25 Pin 5 $\to$ Arduino D5; DB25 Pin 6 $\to$ Arduino D6). |
+| **Double spacing (empty blank line between rows)** | Printer has Auto-LF enabled on CR | Power off printer, toggle rear DIP switch **DS1-4 to OFF** (`CR only`), then power on. |
+| **Printer halts / refuses to eject (`fault = 1`)** | False fault signal on DB25 Pin 15 | Disconnect wire from Arduino **Pin A1**. The driver software configures `IGNORE_FAULT_PIN true` and relies on `BUSY` and `PE`. |
+| **Wi-Fi scan detects 0 networks or brownout crash** | Missing/insufficient reservoir capacitor | Solder or connect an electrolytic capacitor (**200 µF to 470 µF**) directly across ESP-01 **`VCC`** and **`GND`** pins to buffer the 350 mA RF calibration pulse. |
+| **Phone cannot open `192.168.4.1` or drops connection** | Mobile OS auto-disconnects from AP without Internet | In your phone's Wi-Fi settings, tap `Amstrad-DMP3000-<UID>`, and when prompted that the network has no Internet, tap **"Stay Connected"** (or temporarily turn off cellular data). |
+| **ESP-01 constantly restarts / reboots** | Insufficient 3.3V power during Wi-Fi transmit bursts | Do not power ESP-01 from Arduino 3.3V pin. Use external 3.3V regulator/buck converter with common ground. |
 | **Garbled characters printed** | Baud rate mismatch or floating ground | Verify baud rate is set to `115200` on both sketches. Ensure DB25 ground pins (18–25) and Arduino GND are firmly connected. |
 | **Text prints in steps / stairs** | Newlines lack carriage returns (`\n` without `\r`) | `AUTO_CR_ON_LF` is enabled by default in `config.h`. Ensure DIP switch `DS1-4` is OFF. |
 | **Accented letters (é, á, ñ, ü) garbled** | UTF-8 multi-byte characters not converted | The included `cp437_transcode` engine converts UTF-8 to IBM CP437 automatically. Ensure DIP switches `DS1-7` and `DS1-8` are ON (IBM Set #2). |
 | **Printer status shows "PAPER OUT"** | PE line disconnected or paper sensor triggered | Ensure paper is correctly loaded into tractor/friction platen. Check wiring of DB25 Pin 12 to Arduino Pin A2. |
-| **Arduino stops receiving data mid-page** | Serial buffer overrun during slow printing | The firmware uses XON/XOFF flow control. Ensure Arduino TX (Pin 1) is wired to ESP-01 RX (Pin 7) through the voltage divider. |
+| **Arduino stops receiving data mid-page** | Serial buffer overrun during slow printing | The firmware uses XON/XOFF flow control. Ensure Arduino TX (Pin 1) is wired to ESP-01 RX (Pin 7) through the voltage divider. The driver automatically sends periodic `XON` when idle to recover from transients. |
+
+---
+
+## 7. Firmware Flashing Guide (Using Arduino Uno as Programmer)
+
+You can program both the **Arduino Uno** and the **ESP-01 module** using only the Arduino Uno USB cable (`/dev/ttyACM0`).
+
+### Part A: Flashing the Arduino Uno (`arduino_printer_driver`)
+
+When uploading firmware to the Arduino ATmega328P chip, the ESP8266 must not be driving the serial line:
+
+1. **Temporarily unplug the wire** connected to Arduino **Pin 0 (`RX`)**.
+2. Run the upload command:
+   ```bash
+   arduino-cli upload -p /dev/ttyACM0 --fqbn arduino:avr:uno arduino_printer_driver
+   ```
+3. **Plug the wire back into Arduino Pin 0 (`RX`)**.
+
+---
+
+### Part B: Flashing the ESP-01 via Arduino Uno Pass-Through
+
+If you ever need to update the ESP8266 firmware without a standalone USB-UART dongle, the Arduino Uno can act as a transparent 3.3V bridge:
+
+1. **Put the Arduino in Reset:** Connect a jumper wire between Arduino **`RESET`** and Arduino **`GND`** (this keeps the ATmega chip disabled).
+2. **Wire the ESP-01 for Programming:**
+   - ESP **`VCC`** $\to$ External 3.3V (with 200 µF cap across VCC/GND)
+   - ESP **`GND`** $\to$ Arduino **GND**
+   - ESP **`CH_PD`** $\to$ **3.3V**
+   - ESP **`GPIO0`** $\to$ **GND** *(Puts ESP into Bootloader Flash Mode)*
+   - ESP **`TX`** $\to$ Arduino **Pin 1 (`TX`)** *(Connects ESP TX to PC USB RX)*
+   - ESP **`RX`** $\to$ Arduino **Pin 0 (`RX`)** *(Connects ESP RX to PC USB TX)*
+3. **Power-cycle the ESP-01** (unplug and replug the 3.3V power wire for 1 second).
+4. Run the upload command:
+   ```bash
+   arduino-cli compile --fqbn esp8266:esp8266:generic:FlashMode=dout,eesz=1M64 esp8266_cups_bridge
+   python3 ~/.arduino15/packages/esp8266/hardware/esp8266/3.1.2/tools/esptool/esptool.py \
+     -p /dev/ttyACM0 -b 115200 --before no_reset write_flash 0x0 \
+     ~/.cache/arduino/sketches/*/esp8266_cups_bridge.ino.bin
+   ```
+5. **Return to Normal Run Mode:**
+   - Disconnect ESP **`GPIO0`** from GND and connect it to **3.3V**.
+   - Disconnect Arduino **`RESET`** from **`GND`**.
+   - Rewire for normal operation: **ESP TX $\to$ Arduino Pin 0 (RX)**, **Arduino Pin 1 (TX) $\to$ ESP RX**.
+   - Power-cycle the system.

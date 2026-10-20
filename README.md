@@ -65,18 +65,25 @@ oldprinter/
 
 ### 1. DB25 to Arduino Uno / Nano
 
-| DB25 Pin | Centronics 36-Pin | Signal | Arduino Pin |
-| :---: | :---: | :--- | :---: |
-| **1** | 1 | `/STROBE` | **D10** |
-| **2 – 9**| 2 – 9 | DATA 0 – 7 | **D2 – D9** |
-| **10** | 10 | `/ACK` | **D12** |
-| **11** | 11 | BUSY | **D11** |
-| **12** | 12 | PE (Paper End) | **A2** |
-| **13** | 13 | SELECT | **A3** |
-| **15** | 32 | `/FAULT` | **A1** |
-| **16** | 31 | `/INIT` | **A0** |
-| **17** | 36 | `/SLCT_IN` | **GND** |
-| **18 – 25**| 19 – 30 | GND | **GND** |
+| DB25 Pin | Centronics 36-Pin | Signal | Arduino Pin | Notes |
+| :---: | :---: | :--- | :---: | :--- |
+| **1** | 1 | `/STROBE` | **D10** | Active-LOW strobe pulse ($\ge 0.5\,\mu\text{s}$) |
+| **2** | 2 | DATA 0 (LSB) | **D2** | Data bit 0 |
+| **3** | 3 | DATA 1 | **D3** | Data bit 1 |
+| **4** | 4 | DATA 2 | **D4** | Data bit 2 |
+| **5** | 5 | DATA 3 | **D5** | Data bit 3 *(Do not transpose with D6!)* |
+| **6** | 6 | DATA 4 | **D6** | Data bit 4 *(Do not transpose with D5!)* |
+| **7** | 7 | DATA 5 | **D7** | Data bit 5 |
+| **8** | 8 | DATA 6 | **D8** | Data bit 6 |
+| **9** | 9 | DATA 7 (MSB) | **D9** | Data bit 7 |
+| **10** | 10 | `/ACK` | **D12** | Acknowledge pulse |
+| **11** | 11 | BUSY | **D11** | Flow control (primary hardware handshake) |
+| **12** | 12 | PE (Paper End) | **A2** | Paper sensor input |
+| **13** | 13 | SELECT | **A3** | Online status indicator |
+| **15** | 32 | `/FAULT` | *Leave Disconnected* (A1) | Ignored in software (`IGNORE_FAULT_PIN true`) |
+| **16** | 31 | `/INIT` | **A0** | Hardware reset pulse |
+| **17** | 36 | `/SLCT_IN` | **GND** | Forces printer into selected mode |
+| **18 – 25**| 19 – 30 | GND | **GND** | Common ground reference (connect at least Pin 18) |
 
 ### 2. Arduino to ESP8266 (ESP-01 8-Pin)
 
@@ -85,22 +92,27 @@ oldprinter/
 | **1** | GND | Arduino **GND** & External 3.3V PSU **GND** |
 | **2** | TX (GPIO1) | Arduino **Pin 0 (RX)** (Direct 3.3V $\to$ 5V) |
 | **3** | GPIO2 | Pull-up to **3.3V** via 10 kΩ resistor |
-| **4** | CH_PD (EN) | Connect to **+3.3V** |
-| **5** | GPIO0 | Pull-up to **3.3V** via 10 kΩ resistor (pull LOW to flash) |
+| **4** | CH_PD (EN) | Connect to **+3.3V** (Chip enable) |
+| **5** | GPIO0 | Pull-up to **3.3V** via 10 kΩ resistor (pull LOW only to flash) |
 | **6** | RST | Connect to **+3.3V** |
 | **7** | RX (GPIO3) | Arduino **Pin 1 (TX)** via **1 kΩ / 2 kΩ Voltage Divider** |
-| **8** | VCC | **Dedicated 3.3V Power Supply** (AMS1117-3.3 + 100 µF cap) |
+| **8** | VCC | **Dedicated 3.3V Power** with **200 µF – 470 µF capacitor** |
 
 > [!CAUTION]
-> **Power Supply Warning:** Do NOT power the ESP-01 from the Arduino Nano's onboard 3.3V pin. The ESP-01 requires up to 300 mA during RF transmission bursts, which will brown out the Nano's internal 3.3V regulator. Use a dedicated 3.3V regulator and place a 100 µF capacitor across ESP VCC and GND.
+> **Mandatory RF Decoupling Capacitor:** Never omit the electrolytic capacitor (**200 µF to 470 µF**) directly across ESP-01 `VCC` and `GND`. During boot, the ESP8266 calibrates its RF power amplifier (`ram_rfcal_txiq`), drawing a 350–400 mA peak pulse. Without this reservoir capacitor, the 3.3V rail sags, causing Wi-Fi scan to detect 0 networks or throwing `Fatal exception 0 (IllegalInstructionCause)`.
 
 ---
 
 ## 🖨️ Printer DIP Switch Settings
 
-On the rear of the Amstrad DMP3000, configure the switches to select **IBM Character Set #2**:
-- **Bank DS1:** DS1-1 to DS1-3: **ON** (USA), DS1-4: **OFF** (CR only), DS1-5: **OFF** (Paper sensor enabled), DS1-7: **ON**, DS1-8: **ON** (IBM Character Set #2).
-- **Bank DS2:** DS2-5: **ON** (`/SLCT_IN` internally asserted), all others **OFF**.
+On the rear of the Amstrad DMP3000, configure the switches to select **IBM Character Set #2** and single line spacing:
+- **Bank DS1:**
+  - **DS1-1 to DS1-3:** **ON** (USA character set).
+  - **DS1-4:** **OFF** (`CR only` / Single line spacing). *Crucial:* If set to ON, the printer performs an Auto-LF on every CR, resulting in an unwanted empty blank line (double spacing) between rows!
+  - **DS1-5:** **OFF** (Paper sensor enabled).
+  - **DS1-6:** **OFF** (11-inch page length).
+  - **DS1-7 & DS1-8:** **ON** (IBM Character Set #2).
+- **Bank DS2:** **DS2-5:** **ON** (`/SLCT_IN` internally asserted), all others **OFF**.
 
 ---
 
@@ -109,16 +121,15 @@ On the rear of the Amstrad DMP3000, configure the switches to select **IBM Chara
 ### Using `arduino-cli`:
 
 ```bash
-# 1. Compile Arduino Uno / Nano driver
+# 1. Compile Arduino Uno driver
 arduino-cli compile --fqbn arduino:avr:uno arduino_printer_driver
-# (Or for Nano: arduino-cli compile --fqbn arduino:avr:nano arduino_printer_driver)
 
-# 2. Upload to Arduino
-arduino-cli upload -p /dev/ttyUSB0 --fqbn arduino:avr:uno arduino_printer_driver
+# 2. Upload to Arduino Uno
+# (Temporarily unplug wire from Arduino Pin 0 RX before uploading, then plug back in)
+arduino-cli upload -p /dev/ttyACM0 --fqbn arduino:avr:uno arduino_printer_driver
 
-# 3. Compile and upload ESP8266 firmware:
-arduino-cli compile --fqbn esp8266:esp8266:generic esp8266_cups_bridge
-arduino-cli upload -p /dev/ttyUSB1 --fqbn esp8266:esp8266:generic esp8266_cups_bridge
+# 3. Compile ESP8266 firmware (1MB generic ESP-01):
+arduino-cli compile --fqbn esp8266:esp8266:generic:FlashMode=dout,eesz=1M64 esp8266_cups_bridge
 ```
 
 ---
