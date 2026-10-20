@@ -74,7 +74,10 @@ void setup() {
     rx_tail = 0;
     flow_paused = false;
 
-    // 4. Initial announcement
+    // 4. Send initial XON to ensure ESP starts streaming immediately
+    Serial.write(FLOW_XON);
+
+    // 5. Initial announcement
     Serial.println();
     Serial.println(F("INIT: Amstrad DMP3000 Parallel Controller Ready"));
     send_status_report();
@@ -90,6 +93,10 @@ static bool is_esp_diagnostic(const String &s) {
     if (s.indexOf("Target SSID") >= 0) return true;
     if (s.indexOf("station:") >= 0) return true;
     if (s.indexOf("aid ") >= 0) return true;
+    if (s.indexOf("add 1") >= 0) return true;
+    if (s.indexOf("rm 1") >= 0) return true;
+    if (s.startsWith("add ")) return true;
+    if (s.startsWith("rm ")) return true;
     if (s.indexOf("bcn ") >= 0) return true;
     if (s.indexOf("scandone") >= 0) return true;
     if (s.indexOf("mode :") >= 0) return true;
@@ -284,6 +291,13 @@ void loop() {
     if (flow_paused && (buffer_count() <= BUFFER_LOW_WATER)) {
         Serial.write(FLOW_XON);
         flow_paused = false;
+    }
+
+    // Periodic XON assertion when buffer is empty to ensure flow remains unblocked
+    static unsigned long last_idle_xon = 0;
+    if (!flow_paused && buffer_count() == 0 && (millis() - last_idle_xon > 2000)) {
+        last_idle_xon = millis();
+        Serial.write(FLOW_XON);
     }
 
     // ------------------------------------------------------------------------
