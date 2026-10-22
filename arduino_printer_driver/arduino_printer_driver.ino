@@ -85,6 +85,13 @@ void setup() {
 
 static bool is_esp_diagnostic(const String &s) {
     if (s.startsWith("[ESP]")) return true;
+    if (s.startsWith("INIT:")) return true;
+    if (s.startsWith("STATUS:")) return true;
+    if (s.startsWith("[FILTERED")) return true;
+    if (s.startsWith("[PRINT")) return true;
+    if (s.startsWith("OK:")) return true;
+    if (s.indexOf("Controller Ready") >= 0) return true;
+    if (s.indexOf("Parallel Controller") >= 0) return true;
     if (s.indexOf("Heartbeat") >= 0) return true;
     if (s.indexOf("Free heap") >= 0) return true;
     if (s.indexOf("Wi-Fi Clients") >= 0) return true;
@@ -147,8 +154,15 @@ void loop() {
                 if (line_buffer.length() > 0) {
                     if (is_esp_diagnostic(line_buffer)) {
                         // Diagnostic message from ESP: forward to PC USB monitor, NEVER to printer!
-                        Serial.print(F("[FILTERED ESP LOG] "));
-                        Serial.println(line_buffer);
+                        // Drop loopback/status lines silently to prevent serial echo loops
+                        if (!line_buffer.startsWith("INIT:") && 
+                            !line_buffer.startsWith("STATUS:") && 
+                            !line_buffer.startsWith("[FILTERED") && 
+                            !line_buffer.startsWith("[PRINT") &&
+                            !line_buffer.startsWith("OK:")) {
+                            Serial.print(F("[FILTERED ESP LOG] "));
+                            Serial.println(line_buffer);
+                        }
                     } else if (line_buffer == "!STATUS") {
                         send_status_report();
                     } else if (line_buffer == "!RESET") {
@@ -230,6 +244,21 @@ void loop() {
             if (to_print > 0) {
                 uint8_t char_to_send = (uint8_t)to_print;
 
+                static uint8_t prev_raw_char = 0;
+
+#if AUTOFD_PIN14_GROUNDED
+                // DB25 Pin 14 (/AUTOFD) is tied to GND: printer hardware automatically performs LF on every CR (\r).
+                // Sending \n after \r causes double line spacing. Convert lone \n to \r, and drop \n if preceded by \r.
+                if (char_to_send == '\n') {
+                    if (prev_raw_char != '\r') {
+                        centronics_write_byte('\r');
+                    }
+                    // \n itself is dropped since \r triggered CR + LF in hardware
+                } else {
+                    centronics_write_byte(char_to_send);
+                }
+                prev_raw_char = char_to_send;
+#else
                 // Handle auto carriage-return before line feed to prevent staircase effect
 #if AUTO_CR_ON_LF
                 if (char_to_send == '\n' && last_char_sent != '\r') {
@@ -238,6 +267,7 @@ void loop() {
 #endif
                 centronics_write_byte(char_to_send);
                 last_char_sent = char_to_send;
+#endif
 
                 // Live print monitor echo to PC USB serial console
                 if (char_to_send == '\n' || char_to_send == '\r') {

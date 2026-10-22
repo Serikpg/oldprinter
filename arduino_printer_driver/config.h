@@ -54,6 +54,8 @@ const uint8_t PIN_SELECT = A3;   // Input:  SELECT  (DB25 Pin 13, Centronics Pin
 
 // Text Processing Flags
 #define AUTO_CR_ON_LF          true  // When true, translates single \n to \r\n to prevent staircase effect
+#define AUTOFD_PIN14_GROUNDED  true  // When true (DB25 Pin 14 /AUTOFD soldered to GND), hardware auto-feeds on CR (\r).
+                                     // Suppresses trailing \n so only \r is sent, eliminating double line spacing.
 #define ENABLE_CP437_TRANSCODE true  // When true, converts multi-byte UTF-8 into IBM CP437 character codes
 #define ENABLE_STATUS_REPLY    true  // When true, responds to ESP query commands (!STATUS)
 #define IGNORE_FAULT_PIN       true  // When true, ignores /FAULT pin so false cable faults never block printing
