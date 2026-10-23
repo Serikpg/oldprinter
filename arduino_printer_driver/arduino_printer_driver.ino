@@ -77,9 +77,7 @@ void setup() {
     // 4. Send initial XON to ensure ESP starts streaming immediately
     Serial.write(FLOW_XON);
 
-    // 5. Initial announcement
-    Serial.println();
-    Serial.println(F("INIT: Amstrad DMP3000 Parallel Controller Ready"));
+    // 5. Initial status report
     send_status_report();
 
     // 6. Flush any UART startup noise/framing fragments from serial buffer
@@ -90,46 +88,44 @@ void setup() {
 }
 
 static bool is_esp_diagnostic(const String &s) {
-    if (s.indexOf("[ESP]") >= 0) return true;
-    if (s.indexOf("INIT:") >= 0) return true;
-    if (s.indexOf("STATUS:") >= 0) return true;
-    if (s.indexOf("[FILTERED") >= 0) return true;
-    if (s.indexOf("[PRINT") >= 0) return true;
-    if (s.indexOf("OK:") >= 0) return true;
-    if (s.indexOf("Print Portal") >= 0 || s.indexOf("Print portal") >= 0 || s.indexOf("print portal") >= 0) return true;
-    if (s.indexOf("Web UI") >= 0 || s.indexOf("web ui") >= 0 || s.indexOf("Portal") >= 0 || s.indexOf("portal") >= 0) return true;
-    if (s.indexOf("ready") >= 0 || s.indexOf("READY") >= 0) return true;
-    if (s.indexOf("server ready") >= 0) return true;
-    if (s.indexOf("mDNS") >= 0 || s.indexOf("responder") >= 0) return true;
-    if (s.indexOf("JetDirect") >= 0 || s.indexOf("AppSocket") >= 0) return true;
-    if (s.indexOf("Controller Ready") >= 0) return true;
-    if (s.indexOf("Parallel Controller") >= 0) return true;
-    if (s.indexOf("Heartbeat") >= 0) return true;
-    if (s.indexOf("Free heap") >= 0) return true;
-    if (s.indexOf("Wi-Fi Clients") >= 0) return true;
-    if (s.indexOf("SoftAP") >= 0) return true;
-    if (s.indexOf("Chip UID") >= 0) return true;
-    if (s.indexOf("Target SSID") >= 0) return true;
-    if (s.indexOf("station:") >= 0) return true;
-    if (s.indexOf("aid ") >= 0) return true;
-    if (s.indexOf("add 1") >= 0) return true;
-    if (s.indexOf("rm 1") >= 0) return true;
-    if (s.startsWith("add ")) return true;
-    if (s.startsWith("rm ")) return true;
-    if (s.indexOf("bcn ") >= 0) return true;
-    if (s.indexOf("scandone") >= 0) return true;
-    if (s.indexOf("mode :") >= 0) return true;
-    if (s.indexOf("add if") >= 0) return true;
-    if (s.indexOf("del if") >= 0) return true;
-    if (s.indexOf("dhcp server") >= 0) return true;
-    if (s.indexOf("fpm close") >= 0) return true;
-    if (s.indexOf("Port 9100") >= 0) return true;
-    if (s.indexOf("Port 515") >= 0) return true;
-    if (s.indexOf("Port 80") >= 0) return true;
-    if (s.indexOf("Requesting printer status") >= 0) return true;
-    if (s.indexOf("Access Point") >= 0 || s.indexOf("Firmware") >= 0 || s.indexOf("Bridge") >= 0) return true;
-    if (s.indexOf("RF Scan") >= 0 || s.indexOf("networks:") >= 0 || s.indexOf("Captive DNS") >= 0) return true;
-    if (s.indexOf("dBm") >= 0 || s.indexOf("ets Jan") >= 0 || s.indexOf("rst cause") >= 0 || s.indexOf("boot mode") >= 0) return true;
+    String lower = s;
+    lower.toLowerCase();
+    if (lower.indexOf("[esp]") >= 0) return true;
+    if (lower.indexOf("init:") >= 0) return true;
+    if (lower.indexOf("status:") >= 0) return true;
+    if (lower.indexOf("[filtered") >= 0) return true;
+    if (lower.indexOf("[print") >= 0) return true;
+    if (lower.indexOf("ok:") >= 0) return true;
+    if (lower.indexOf("print portal") >= 0) return true;
+    if (lower.indexOf("web ui") >= 0) return true;
+    if (lower.indexOf("portal") >= 0) return true;
+    if (lower.indexOf("ready") >= 0) return true;
+    if (lower.indexOf("server ready") >= 0) return true;
+    if (lower.indexOf("mdns") >= 0 || lower.indexOf("responder") >= 0) return true;
+    if (lower.indexOf("jetdirect") >= 0 || lower.indexOf("appsocket") >= 0) return true;
+    if (lower.indexOf("controller ready") >= 0) return true;
+    if (lower.indexOf("parallel controller") >= 0) return true;
+    if (lower.indexOf("heartbeat") >= 0) return true;
+    if (lower.indexOf("free heap") >= 0) return true;
+    if (lower.indexOf("wi-fi clients") >= 0 || lower.indexOf("wifi") >= 0) return true;
+    if (lower.indexOf("softap") >= 0) return true;
+    if (lower.indexOf("chip uid") >= 0) return true;
+    if (lower.indexOf("target ssid") >= 0) return true;
+    if (lower.indexOf("station:") >= 0) return true;
+    if (lower.indexOf("aid ") >= 0) return true;
+    if (lower.indexOf("add 1") >= 0 || lower.indexOf("rm 1") >= 0) return true;
+    if (lower.startsWith("add ") || lower.startsWith("rm ")) return true;
+    if (lower.indexOf("bcn ") >= 0) return true;
+    if (lower.indexOf("scandone") >= 0) return true;
+    if (lower.indexOf("mode :") >= 0) return true;
+    if (lower.indexOf("add if") >= 0 || lower.indexOf("del if") >= 0) return true;
+    if (lower.indexOf("dhcp server") >= 0) return true;
+    if (lower.indexOf("fpm close") >= 0) return true;
+    if (lower.indexOf("port 9100") >= 0 || lower.indexOf("port 515") >= 0 || lower.indexOf("port 80") >= 0) return true;
+    if (lower.indexOf("requesting printer status") >= 0) return true;
+    if (lower.indexOf("access point") >= 0 || lower.indexOf("firmware") >= 0 || lower.indexOf("bridge") >= 0) return true;
+    if (lower.indexOf("rf scan") >= 0 || lower.indexOf("networks:") >= 0 || lower.indexOf("captive dns") >= 0) return true;
+    if (lower.indexOf("dbm") >= 0 || lower.indexOf("ets jan") >= 0 || lower.indexOf("rst cause") >= 0 || lower.indexOf("boot mode") >= 0) return true;
     return false;
 }
 
@@ -185,12 +181,24 @@ void loop() {
                         centronics_reset_printer();
                         cp437_reset();
                         Serial.println(F("OK: Printer Reset"));
+                    } else if (cmd == "!CLEAR" || cmd == "!FLUSH" || cmd == "!CANCEL") {
+                        rx_head = 0;
+                        rx_tail = 0;
+                        flow_paused = false;
+                        Serial.write(FLOW_XON);
+                        // Send CAN (0x18) to DMP3000 to erase any partially buffered line in the printer
+                        centronics_write_byte(0x18);
+                        Serial.println(F("OK: Buffer Cleared"));
                     } else if (cmd == "!EJECT" || cmd == "!FF") {
                         centronics_write_byte(0x0C);
                         Serial.println(F("OK: Form Feed Dispatched"));
                     } else {
-                        // Valid print text: push full line preserving all leading and trailing spaces!
-                        for (unsigned int i = 0; i < line_buffer.length(); i++) {
+                        // Valid print text: strip trailing whitespace only (preserves all leading indentation)
+                        int end_idx = line_buffer.length();
+                        while (end_idx > 0 && line_buffer[end_idx - 1] == ' ') {
+                            end_idx--;
+                        }
+                        for (int i = 0; i < end_idx; i++) {
                             if (!buffer_is_full()) {
                                 rx_buffer[rx_head] = line_buffer[i];
                                 rx_head = (rx_head + 1) % RING_BUFFER_SIZE;

@@ -23,5 +23,6 @@ bool     raw_server_is_job_active();
 
 // Sends a control command to Arduino (e.g. "!STATUS", "!RESET", "!EJECT")
 void raw_server_send_command(const String &cmd);
+void raw_server_flush();
 
 #endif // CUPS_RAW_SERVER_H

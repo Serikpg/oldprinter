@@ -212,6 +212,24 @@ static void process_lpd_client() {
     }
 }
 
+void raw_server_flush() {
+    stream_head = 0;
+    stream_tail = 0;
+    serial_flow_allowed = true;
+    if (rawClient) {
+        while (rawClient.available() > 0) {
+            rawClient.read();
+        }
+        rawClient.stop();
+    }
+    if (lpdClient) {
+        while (lpdClient.available() > 0) {
+            lpdClient.read();
+        }
+        lpdClient.stop();
+    }
+}
+
 void raw_server_loop() {
     // ------------------------------------------------------------------------
     // 1. Check for incoming Serial responses from Arduino (XON/XOFF and text)
@@ -245,26 +263,57 @@ void raw_server_loop() {
     // ------------------------------------------------------------------------
     static unsigned long raw_last_activity = 0;
 
-    if (!rawClient || !rawClient.connected()) {
+    // Accept new client if existing client is finished and stopped
+    if (!rawClient || (!rawClient.connected() && rawClient.available() == 0)) {
+        if (rawClient) {
+            rawClient.stop();
+        }
         if (rawServer.hasClient()) {
             rawClient = rawServer.available();
+            rawClient.setNoDelay(true);
             raw_last_activity = millis();
         }
     }
 
-    if (rawClient && rawClient.connected()) {
+    if (rawClient) {
         // Read incoming network bytes as long as stream buffer has room
         while (rawClient.available() > 0 && buffer_free() > 0) {
             uint8_t b = rawClient.read();
+
+            // In-band clear command: ASCII CAN (0x18) or string "!CLEAR" from CUPS / network
+            static uint8_t clear_seq = 0;
+            const char CLEAR_STR[] = "!CLEAR";
+            if (b == 0x18) {
+                raw_server_flush();
+                raw_server_send_command("!CLEAR");
+                break;
+            } else if (b == (uint8_t)CLEAR_STR[clear_seq]) {
+                clear_seq++;
+                if (clear_seq == 6) {
+                    raw_server_flush();
+                    raw_server_send_command("!CLEAR");
+                    clear_seq = 0;
+                    break;
+                }
+                continue;
+            } else {
+                clear_seq = 0;
+            }
+
             raw_server_push_byte(b);
             raw_last_activity = millis();
         }
         // If stream buffer is full, stop reading from rawClient.
         // TCP window throttling will automatically pause CUPS upstream!
 
-        // Release socket after 8 seconds of idle silence so other devices can print
-        if (rawClient.available() == 0 && (millis() - raw_last_activity > 8000)) {
-            rawClient.stop();
+        // If client closed connection and all bytes are ingested, stop socket
+        if (rawClient.available() == 0) {
+            if (!rawClient.connected()) {
+                rawClient.stop();
+            } else if (millis() - raw_last_activity > 8000) {
+                // Release socket after 8 seconds of idle silence
+                rawClient.stop();
+            }
         }
     }
 

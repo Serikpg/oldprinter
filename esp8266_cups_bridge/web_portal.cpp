@@ -3,8 +3,10 @@
 #include "wifi_manager.h"
 #include "config.h"
 #include <ESP8266WebServer.h>
+#include <ESP8266HTTPUpdateServer.h>
 
 static ESP8266WebServer server(HTTP_PORT);
+static ESP8266HTTPUpdateServer httpUpdater;
 
 static const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
@@ -237,6 +239,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
       <div class="btn-row">
         <button class="btn btn-secondary" onclick="triggerAction('/testpage')">Print Test Page</button>
         <button class="btn btn-secondary" onclick="triggerAction('/eject')">Form Feed (Eject)</button>
+        <button class="btn btn-secondary" onclick="triggerAction('/clear')">Clear Buffer</button>
         <button class="btn btn-secondary" onclick="triggerAction('/reset')">Reset Printer</button>
       </div>
     </div>
@@ -391,9 +394,16 @@ static void handle_eject() {
     server.send(200, "text/plain", "Form feed dispatched");
 }
 
+static void handle_clear() {
+    raw_server_flush();
+    raw_server_send_command("!CLEAR");
+    server.send(200, "text/plain", "Print buffers erased and queue cleared");
+}
+
 static void handle_reset() {
+    raw_server_flush();
     raw_server_send_command("!RESET");
-    server.send(200, "text/plain", "Hardware reset signal sent to printer");
+    server.send(200, "text/plain", "Printer buffer flushed and hardware reset signal sent");
 }
 
 void web_portal_print_test_page() {
@@ -467,10 +477,17 @@ void web_portal_init() {
     server.on("/print", HTTP_POST, handle_print);
     server.on("/eject", HTTP_POST, handle_eject);
     server.on("/eject", HTTP_GET, handle_eject);
+    server.on("/clear", HTTP_POST, handle_clear);
+    server.on("/clear", HTTP_GET, handle_clear);
+    server.on("/cancel", HTTP_POST, handle_clear);
+    server.on("/cancel", HTTP_GET, handle_clear);
     server.on("/reset", HTTP_POST, handle_reset);
     server.on("/reset", HTTP_GET, handle_reset);
     server.on("/testpage", HTTP_POST, handle_test_page);
     server.on("/testpage", HTTP_GET, handle_test_page);
+
+    // OTA firmware web updater (accessible at http://192.168.4.1/update)
+    httpUpdater.setup(&server, "/update");
 
     // Captive portal probes
     server.on("/generate_204", handle_captive_redirect);

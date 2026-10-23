@@ -36,6 +36,12 @@ void centronics_reset_printer() {
     
     // Give the printer 250 ms to finish internal microprocessor reset and home the printhead
     delay(250);
+
+#if SEND_ESC_DISABLE_PE
+    // Send ESC 8 to disable paper-out sensor on DMP3000 (allows single sheets to print to bottom edge)
+    centronics_write_byte(0x1B);
+    centronics_write_byte('8');
+#endif
 }
 
 bool centronics_is_busy() {
@@ -43,7 +49,11 @@ bool centronics_is_busy() {
 }
 
 bool centronics_is_paper_out() {
+#if IGNORE_PE_PIN
+    return false;
+#else
     return (digitalRead(PIN_PE) == HIGH);
+#endif
 }
 
 bool centronics_is_fault() {
