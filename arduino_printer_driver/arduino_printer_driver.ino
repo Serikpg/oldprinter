@@ -81,15 +81,27 @@ void setup() {
     Serial.println();
     Serial.println(F("INIT: Amstrad DMP3000 Parallel Controller Ready"));
     send_status_report();
+
+    // 6. Flush any UART startup noise/framing fragments from serial buffer
+    delay(100);
+    while (Serial.available()) {
+        Serial.read();
+    }
 }
 
 static bool is_esp_diagnostic(const String &s) {
-    if (s.startsWith("[ESP]")) return true;
-    if (s.startsWith("INIT:")) return true;
-    if (s.startsWith("STATUS:")) return true;
-    if (s.startsWith("[FILTERED")) return true;
-    if (s.startsWith("[PRINT")) return true;
-    if (s.startsWith("OK:")) return true;
+    if (s.indexOf("[ESP]") >= 0) return true;
+    if (s.indexOf("INIT:") >= 0) return true;
+    if (s.indexOf("STATUS:") >= 0) return true;
+    if (s.indexOf("[FILTERED") >= 0) return true;
+    if (s.indexOf("[PRINT") >= 0) return true;
+    if (s.indexOf("OK:") >= 0) return true;
+    if (s.indexOf("Print Portal") >= 0 || s.indexOf("Print portal") >= 0 || s.indexOf("print portal") >= 0) return true;
+    if (s.indexOf("Web UI") >= 0 || s.indexOf("web ui") >= 0 || s.indexOf("Portal") >= 0 || s.indexOf("portal") >= 0) return true;
+    if (s.indexOf("ready") >= 0 || s.indexOf("READY") >= 0) return true;
+    if (s.indexOf("server ready") >= 0) return true;
+    if (s.indexOf("mDNS") >= 0 || s.indexOf("responder") >= 0) return true;
+    if (s.indexOf("JetDirect") >= 0 || s.indexOf("AppSocket") >= 0) return true;
     if (s.indexOf("Controller Ready") >= 0) return true;
     if (s.indexOf("Parallel Controller") >= 0) return true;
     if (s.indexOf("Heartbeat") >= 0) return true;
@@ -115,6 +127,9 @@ static bool is_esp_diagnostic(const String &s) {
     if (s.indexOf("Port 515") >= 0) return true;
     if (s.indexOf("Port 80") >= 0) return true;
     if (s.indexOf("Requesting printer status") >= 0) return true;
+    if (s.indexOf("Access Point") >= 0 || s.indexOf("Firmware") >= 0 || s.indexOf("Bridge") >= 0) return true;
+    if (s.indexOf("RF Scan") >= 0 || s.indexOf("networks:") >= 0 || s.indexOf("Captive DNS") >= 0) return true;
+    if (s.indexOf("dBm") >= 0 || s.indexOf("ets Jan") >= 0 || s.indexOf("rst cause") >= 0 || s.indexOf("boot mode") >= 0) return true;
     return false;
 }
 
@@ -150,30 +165,31 @@ void loop() {
         // Handle line endings
         if (c == '\n' || c == '\r') {
             if (line_buffer.length() > 0) {
-                line_buffer.trim();
-                if (line_buffer.length() > 0) {
-                    if (is_esp_diagnostic(line_buffer)) {
+                String cmd = line_buffer;
+                cmd.trim();
+                if (cmd.length() > 0) {
+                    if (is_esp_diagnostic(cmd)) {
                         // Diagnostic message from ESP: forward to PC USB monitor, NEVER to printer!
                         // Drop loopback/status lines silently to prevent serial echo loops
-                        if (!line_buffer.startsWith("INIT:") && 
-                            !line_buffer.startsWith("STATUS:") && 
-                            !line_buffer.startsWith("[FILTERED") && 
-                            !line_buffer.startsWith("[PRINT") &&
-                            !line_buffer.startsWith("OK:")) {
+                        if (!cmd.startsWith("INIT:") && 
+                            !cmd.startsWith("STATUS:") && 
+                            !cmd.startsWith("[FILTERED") && 
+                            !cmd.startsWith("[PRINT") &&
+                            !cmd.startsWith("OK:")) {
                             Serial.print(F("[FILTERED ESP LOG] "));
-                            Serial.println(line_buffer);
+                            Serial.println(cmd);
                         }
-                    } else if (line_buffer == "!STATUS") {
+                    } else if (cmd == "!STATUS") {
                         send_status_report();
-                    } else if (line_buffer == "!RESET") {
+                    } else if (cmd == "!RESET") {
                         centronics_reset_printer();
                         cp437_reset();
                         Serial.println(F("OK: Printer Reset"));
-                    } else if (line_buffer == "!EJECT" || line_buffer == "!FF") {
+                    } else if (cmd == "!EJECT" || cmd == "!FF") {
                         centronics_write_byte(0x0C);
                         Serial.println(F("OK: Form Feed Dispatched"));
                     } else {
-                        // Valid print text: push into ring buffer
+                        // Valid print text: push full line preserving all leading and trailing spaces!
                         for (unsigned int i = 0; i < line_buffer.length(); i++) {
                             if (!buffer_is_full()) {
                                 rx_buffer[rx_head] = line_buffer[i];
