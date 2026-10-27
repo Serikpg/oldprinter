@@ -128,6 +128,8 @@ static bool is_esp_diagnostic(const String &s) {
     if (lower.indexOf("rf scan") >= 0 || lower.indexOf("networks:") >= 0 || lower.indexOf("captive dns") >= 0) return true;
     if (lower.indexOf("dbm") >= 0 || lower.indexOf("ets jan") >= 0 || lower.indexOf("rst cause") >= 0 || lower.indexOf("boot mode") >= 0) return true;
     if (lower.indexOf("load 0x") >= 0 || lower.indexOf("chksum") >= 0 || lower.indexOf("csum") >= 0 || lower.indexOf("~ld") >= 0) return true;
+    if (lower.indexOf("tail ") >= 0 || lower.startsWith("tail") || lower.indexOf("v000") >= 0 || lower.indexOf("@cp:") >= 0) return true;
+    if (lower == "ld" || lower.endsWith("ld") || lower.indexOf("room ") >= 0 || lower.indexOf("len ") >= 0 || lower.indexOf("ets") >= 0) return true;
     if (lower.indexOf("wdt reset") >= 0 || lower.indexOf("fatal exception") >= 0) return true;
     return false;
 }

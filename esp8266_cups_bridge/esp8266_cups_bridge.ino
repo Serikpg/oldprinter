@@ -50,7 +50,10 @@ void setup() {
     raw_server_init();
     web_portal_init();
 
-    // 5. Query initial status from Arduino
+    // 5. Clear any bootloader noise from Arduino buffer and query status
+    delay(100);
+    raw_server_send_command("!CLEAR");
+    delay(50);
     raw_server_send_command("!STATUS");
 }
 
