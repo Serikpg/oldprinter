@@ -306,12 +306,18 @@ void raw_server_loop() {
         // If stream buffer is full, stop reading from rawClient.
         // TCP window throttling will automatically pause CUPS upstream!
 
+        // Keep connection alive while actively draining stream buffer, backpressured,
+        // or waiting for printer (e.g. out of paper or offline). Never sever socket while busy!
+        if (buffer_count() > 0 || !serial_flow_allowed || printer_busy || printer_paper_out) {
+            raw_last_activity = millis();
+        }
+
         // If client closed connection and all bytes are ingested, stop socket
         if (rawClient.available() == 0) {
             if (!rawClient.connected()) {
                 rawClient.stop();
-            } else if (millis() - raw_last_activity > 8000) {
-                // Release socket after 8 seconds of idle silence
+            } else if (millis() - raw_last_activity > 60000 && buffer_count() == 0 && serial_flow_allowed) {
+                // Release socket only after 60 seconds of true idle silence when buffer is completely empty
                 rawClient.stop();
             }
         }
