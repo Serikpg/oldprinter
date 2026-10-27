@@ -129,7 +129,7 @@ static bool is_esp_diagnostic(const String &s) {
     if (lower.indexOf("dbm") >= 0 || lower.indexOf("ets jan") >= 0 || lower.indexOf("rst cause") >= 0 || lower.indexOf("boot mode") >= 0) return true;
     if (lower.indexOf("load 0x") >= 0 || lower.indexOf("chksum") >= 0 || lower.indexOf("csum") >= 0 || lower.indexOf("~ld") >= 0) return true;
     if (lower.indexOf("tail ") >= 0 || lower.startsWith("tail") || lower.indexOf("v000") >= 0 || lower.indexOf("@cp:") >= 0) return true;
-    if (lower == "ld" || lower.endsWith("ld") || lower.indexOf("room ") >= 0 || lower.indexOf("len ") >= 0 || lower.indexOf("ets") >= 0) return true;
+    if (lower == "ld" || lower == "~ld" || lower.indexOf("~ld") >= 0 || lower.indexOf("room ") >= 0 || lower.indexOf("len ") >= 0 || lower.indexOf("ets") >= 0) return true;
     if (lower.indexOf("wdt reset") >= 0 || lower.indexOf("fatal exception") >= 0) return true;
     return false;
 }
@@ -150,6 +150,14 @@ void loop() {
 
         // Control characters / Escape sequences (except \r, \n, \t) bypass line buffering
         if (c < 32 && c != '\r' && c != '\n' && c != '\t') {
+            // If the buffer is empty and printer is idle, any control character
+            // arriving alongside un-terminated fragments is 100% boot/framing noise.
+            // Discard both line_buffer and the stray control byte!
+            if (buffer_count() == 0) {
+                line_buffer = "";
+                continue;
+            }
+
             if (line_buffer.length() > 0) {
                 if (is_esp_diagnostic(line_buffer)) {
                     line_buffer = "";
@@ -170,21 +178,20 @@ void loop() {
             continue;
         }
 
+        // Exclamation mark indicates start of a control command (!STATUS, !CLEAR, !EJECT, !RESET).
+        // If line_buffer contains prior bootloader or framing noise, discard the noise.
+        if (c == '!') {
+            line_buffer = "!";
+            continue;
+        }
+
         // Handle line endings
         if (c == '\n' || c == '\r') {
             if (line_buffer.length() > 0) {
                 String cmd = line_buffer;
                 cmd.trim();
                 if (cmd.length() > 0) {
-                    if (is_esp_diagnostic(cmd)) {
-                        // Diagnostic message from ESP: drop silently to avoid polluting serial link
-                    } else if (cmd == "!STATUS") {
-                        send_status_report();
-                    } else if (cmd == "!RESET") {
-                        centronics_reset_printer();
-                        cp437_reset();
-                        Serial.println(F("OK: Printer Reset"));
-                    } else if (cmd == "!CLEAR" || cmd == "!FLUSH" || cmd == "!CANCEL") {
+                    if (cmd.indexOf("!CLEAR") >= 0 || cmd.indexOf("!FLUSH") >= 0 || cmd.indexOf("!CANCEL") >= 0) {
                         rx_head = 0;
                         rx_tail = 0;
                         flow_paused = false;
@@ -192,9 +199,17 @@ void loop() {
                         // Send CAN (0x18) to DMP3000 to erase any partially buffered line in the printer
                         centronics_write_byte(0x18);
                         Serial.println(F("OK: Buffer Cleared"));
-                    } else if (cmd == "!EJECT" || cmd == "!FF") {
+                    } else if (cmd.indexOf("!EJECT") >= 0 || cmd.indexOf("!FF") >= 0) {
                         centronics_write_byte(0x0C);
                         Serial.println(F("OK: Form Feed Dispatched"));
+                    } else if (cmd.indexOf("!STATUS") >= 0) {
+                        send_status_report();
+                    } else if (cmd.indexOf("!RESET") >= 0) {
+                        centronics_reset_printer();
+                        cp437_reset();
+                        Serial.println(F("OK: Printer Reset"));
+                    } else if (is_esp_diagnostic(cmd)) {
+                        // Diagnostic message from ESP: drop silently to avoid polluting serial link
                     } else {
                         // Valid print text: strip trailing whitespace only (preserves all leading indentation)
                         int end_idx = line_buffer.length();
