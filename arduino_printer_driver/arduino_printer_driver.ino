@@ -161,10 +161,6 @@ void loop() {
                 }
                 line_buffer = "";
             }
-            // Discard lone Form Feed (0x0C) if buffer is completely empty (stray boot/framing noise)
-            if (c == 0x0C && buffer_count() == 0) {
-                continue;
-            }
             if (!buffer_is_full()) {
                 rx_buffer[rx_head] = c;
                 rx_head = (rx_head + 1) % RING_BUFFER_SIZE;

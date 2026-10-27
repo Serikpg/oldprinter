@@ -408,7 +408,7 @@ static void handle_print() {
 }
 
 static void handle_eject() {
-    raw_server_push_byte(0x0C);
+    raw_server_send_command("!EJECT");
     server.send(200, "text/plain", "Form feed dispatched");
 }
 
