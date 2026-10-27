@@ -81,7 +81,8 @@ void setup() {
     send_status_report();
 
     // 6. Flush any UART startup noise/framing fragments from serial buffer
-    delay(100);
+    // Wait 1500ms so ESP8266 finishes its 74880-baud ROM bootloader message before settling
+    delay(1500);
     while (Serial.available()) {
         Serial.read();
     }
@@ -126,6 +127,8 @@ static bool is_esp_diagnostic(const String &s) {
     if (lower.indexOf("access point") >= 0 || lower.indexOf("firmware") >= 0 || lower.indexOf("bridge") >= 0) return true;
     if (lower.indexOf("rf scan") >= 0 || lower.indexOf("networks:") >= 0 || lower.indexOf("captive dns") >= 0) return true;
     if (lower.indexOf("dbm") >= 0 || lower.indexOf("ets jan") >= 0 || lower.indexOf("rst cause") >= 0 || lower.indexOf("boot mode") >= 0) return true;
+    if (lower.indexOf("load 0x") >= 0 || lower.indexOf("chksum") >= 0 || lower.indexOf("csum") >= 0 || lower.indexOf("~ld") >= 0) return true;
+    if (lower.indexOf("wdt reset") >= 0 || lower.indexOf("fatal exception") >= 0) return true;
     return false;
 }
 
@@ -138,18 +141,29 @@ void loop() {
     while (Serial.available()) {
         uint8_t c = Serial.read();
 
+        // Drop NUL (0x00) bytes immediately (framing errors and line noise produce NUL)
+        if (c == 0) {
+            continue;
+        }
+
         // Control characters / Escape sequences (except \r, \n, \t) bypass line buffering
         if (c < 32 && c != '\r' && c != '\n' && c != '\t') {
             if (line_buffer.length() > 0) {
-                if (!is_esp_diagnostic(line_buffer)) {
-                    for (unsigned int i = 0; i < line_buffer.length(); i++) {
-                        if (!buffer_is_full()) {
-                            rx_buffer[rx_head] = line_buffer[i];
-                            rx_head = (rx_head + 1) % RING_BUFFER_SIZE;
-                        }
+                if (is_esp_diagnostic(line_buffer)) {
+                    line_buffer = "";
+                    continue; // Drop the diagnostic line AND the trailing control char!
+                }
+                for (unsigned int i = 0; i < line_buffer.length(); i++) {
+                    if (!buffer_is_full()) {
+                        rx_buffer[rx_head] = line_buffer[i];
+                        rx_head = (rx_head + 1) % RING_BUFFER_SIZE;
                     }
                 }
                 line_buffer = "";
+            }
+            // Discard lone Form Feed (0x0C) if buffer is completely empty (stray boot/framing noise)
+            if (c == 0x0C && buffer_count() == 0) {
+                continue;
             }
             if (!buffer_is_full()) {
                 rx_buffer[rx_head] = c;
@@ -165,16 +179,7 @@ void loop() {
                 cmd.trim();
                 if (cmd.length() > 0) {
                     if (is_esp_diagnostic(cmd)) {
-                        // Diagnostic message from ESP: forward to PC USB monitor, NEVER to printer!
-                        // Drop loopback/status lines silently to prevent serial echo loops
-                        if (!cmd.startsWith("INIT:") && 
-                            !cmd.startsWith("STATUS:") && 
-                            !cmd.startsWith("[FILTERED") && 
-                            !cmd.startsWith("[PRINT") &&
-                            !cmd.startsWith("OK:")) {
-                            Serial.print(F("[FILTERED ESP LOG] "));
-                            Serial.println(cmd);
-                        }
+                        // Diagnostic message from ESP: drop silently to avoid polluting serial link
                     } else if (cmd == "!STATUS") {
                         send_status_report();
                     } else if (cmd == "!RESET") {

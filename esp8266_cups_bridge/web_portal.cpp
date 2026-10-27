@@ -7,6 +7,23 @@
 
 static ESP8266WebServer server(HTTP_PORT);
 static ESP8266HTTPUpdateServer httpUpdater;
+static unsigned long flash_mode_start = 0;
+
+static void handle_flash_mode() {
+    Serial.end();
+    pinMode(1, INPUT);
+    pinMode(3, INPUT);
+    flash_mode_start = millis();
+    server.send(200, "text/plain", "UART released to high-Z input! Ready to flash Arduino via USB.");
+}
+
+static void handle_resume() {
+    flash_mode_start = 0;
+    Serial.begin(SERIAL_BAUD_RATE);
+    delay(50);
+    Serial.setDebugOutput(false);
+    server.send(200, "text/plain", "UART resumed at 115200 baud.");
+}
 
 static const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
@@ -241,6 +258,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
         <button class="btn btn-secondary" onclick="triggerAction('/eject')">Form Feed (Eject)</button>
         <button class="btn btn-secondary" onclick="triggerAction('/clear')">Clear Buffer</button>
         <button class="btn btn-secondary" onclick="triggerAction('/reset')">Reset Printer</button>
+        <button class="btn btn-secondary" onclick="triggerAction('/flash_mode')">Flash Mode (Release UART)</button>
       </div>
     </div>
 
@@ -486,6 +504,11 @@ void web_portal_init() {
     server.on("/testpage", HTTP_POST, handle_test_page);
     server.on("/testpage", HTTP_GET, handle_test_page);
 
+    server.on("/flash_mode", HTTP_POST, handle_flash_mode);
+    server.on("/flash_mode", HTTP_GET, handle_flash_mode);
+    server.on("/resume", HTTP_POST, handle_resume);
+    server.on("/resume", HTTP_GET, handle_resume);
+
     // OTA firmware web updater (accessible at http://192.168.4.1/update)
     httpUpdater.setup(&server, "/update");
 
@@ -502,4 +525,11 @@ void web_portal_init() {
 
 void web_portal_loop() {
     server.handleClient();
+
+    if (flash_mode_start != 0 && (millis() - flash_mode_start > 90000)) {
+        flash_mode_start = 0;
+        Serial.begin(SERIAL_BAUD_RATE);
+        delay(50);
+        Serial.setDebugOutput(false);
+    }
 }
