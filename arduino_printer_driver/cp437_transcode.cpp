@@ -74,6 +74,20 @@ static uint8_t unicode_to_cp437(uint32_t cp) {
         case 0x00B0: return 248; // °
         case 0x00B7: return 250; // ·
         case 0x00B2: return 253; // ²
+        case 0x00B4: return '\''; // Acute accent (´) fallback to apostrophe
+        case 0x00A0: return ' ';  // Non-breaking space
+        case 0x02DC: return '~';  // Small tilde
+        case 0x02C6: return '^';  // Modifier circumflex
+        case 0x2018: return '`';  // Left single quotation mark
+        case 0x2019: return '\''; // Right single quotation mark / apostrophe
+        case 0x201A: return ',';  // Single low-9 quotation mark
+        case 0x201C: return '"';  // Left double quotation mark
+        case 0x201D: return '"';  // Right double quotation mark
+        case 0x201E: return '"';  // Double low-9 quotation mark
+        case 0x2013: return '-';  // En dash
+        case 0x2014: return '-';  // Em dash
+        case 0x2022: return 249;  // Bullet (∙)
+        case 0x2026: return '.';  // Horizontal ellipsis
 
         // Box Drawing Characters (Unicode 0x2500 - 0x257F)
         case 0x2500: return 196; // ─

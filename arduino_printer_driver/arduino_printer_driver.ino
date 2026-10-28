@@ -150,11 +150,8 @@ void loop() {
 
         // Control characters / Escape sequences (except \r, \n, \t) bypass line buffering
         if (c < 32 && c != '\r' && c != '\n' && c != '\t') {
-            // If the buffer is empty and printer is idle, any control character
-            // arriving alongside un-terminated fragments is 100% boot/framing noise.
-            // Discard both line_buffer and the stray control byte!
-            if (buffer_count() == 0) {
-                line_buffer = "";
+            // Discard lone Form Feed (0x0C) only if completely idle and buffer is empty
+            if (c == 0x0C && buffer_count() == 0 && line_buffer.length() == 0) {
                 continue;
             }
 
@@ -178,20 +175,13 @@ void loop() {
             continue;
         }
 
-        // Exclamation mark indicates start of a control command (!STATUS, !CLEAR, !EJECT, !RESET).
-        // If line_buffer contains prior bootloader or framing noise, discard the noise.
-        if (c == '!') {
-            line_buffer = "!";
-            continue;
-        }
-
         // Handle line endings
         if (c == '\n' || c == '\r') {
             if (line_buffer.length() > 0) {
                 String cmd = line_buffer;
                 cmd.trim();
                 if (cmd.length() > 0) {
-                    if (cmd.indexOf("!CLEAR") >= 0 || cmd.indexOf("!FLUSH") >= 0 || cmd.indexOf("!CANCEL") >= 0) {
+                    if (cmd == "!CLEAR" || cmd == "!FLUSH" || cmd == "!CANCEL") {
                         rx_head = 0;
                         rx_tail = 0;
                         flow_paused = false;
@@ -199,12 +189,12 @@ void loop() {
                         // Send CAN (0x18) to DMP3000 to erase any partially buffered line in the printer
                         centronics_write_byte(0x18);
                         Serial.println(F("OK: Buffer Cleared"));
-                    } else if (cmd.indexOf("!EJECT") >= 0 || cmd.indexOf("!FF") >= 0) {
+                    } else if (cmd == "!EJECT" || cmd == "!FF") {
                         centronics_write_byte(0x0C);
                         Serial.println(F("OK: Form Feed Dispatched"));
-                    } else if (cmd.indexOf("!STATUS") >= 0) {
+                    } else if (cmd == "!STATUS") {
                         send_status_report();
-                    } else if (cmd.indexOf("!RESET") >= 0) {
+                    } else if (cmd == "!RESET") {
                         centronics_reset_printer();
                         cp437_reset();
                         Serial.println(F("OK: Printer Reset"));

@@ -7,12 +7,12 @@ void centronics_init() {
         digitalWrite(PIN_DATA[i], LOW);
     }
 
-    // 2. Initialize control outputs
+    // 2. Initialize control outputs (drive HIGH before OUTPUT to prevent active-LOW glitch pulses)
+    digitalWrite(PIN_STROBE, HIGH);
     pinMode(PIN_STROBE, OUTPUT);
-    digitalWrite(PIN_STROBE, HIGH); // /STROBE is active LOW (idle HIGH)
 
+    digitalWrite(PIN_INIT, HIGH);
     pinMode(PIN_INIT, OUTPUT);
-    digitalWrite(PIN_INIT, HIGH);   // /INIT is active LOW (idle HIGH)
 
     pinMode(PIN_LED, OUTPUT);
     digitalWrite(PIN_LED, LOW);
